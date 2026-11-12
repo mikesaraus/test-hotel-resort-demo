@@ -3,23 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Kalinaw Bay Resort — Operations mockup</title>
+<title>Camsair Resort — Front desk &amp; operations mockup</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <div class="app">
   <aside class="side" id="side">
-    <div class="brand">
-      <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M4 26c6-4 10-4 16 0s10 4 16 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><path d="M4 33c6-4 10-4 16 0s10 4 16 0" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".5"/><circle cx="27" cy="13" r="6" fill="#E2A13A"/></svg>
-      <div><strong>Kalinaw Bay</strong><span>Resort operations</span></div>
+    <div class="brand" aria-label="Camsair Resort">
+      <strong>CAMSAIR</strong>
+      <span class="brand-rule" aria-hidden="true"><i></i>RESORT<i></i></span>
+      <small>Initao, Misamis Oriental</small>
     </div>
     <label class="role">
       <span>Viewing as</span>
       <select id="roleSelect">
+        <option value="frontdesk" selected>Front desk</option>
         <option value="manager">General manager</option>
-        <option value="frontdesk">Front desk</option>
         <option value="housekeeping">Housekeeping</option>
         <option value="fnb">Restaurant &amp; bar</option>
         <option value="guest">Guest (phone app)</option>
@@ -28,14 +29,14 @@
     <nav id="nav" aria-label="Main"></nav>
     <div class="side-foot">
       <button class="link" id="resetDemo">Reset sample data</button>
-      <span class="demo-tag">Demo — all data is fictional</span>
+      <span class="demo-tag">Mockup. Guests, rooms and prices are sample data.</span>
     </div>
   </aside>
   <main class="main">
     <header class="top">
       <button class="menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
       <div>
-        <h1 id="pageTitle">Today</h1>
+        <h1 id="pageTitle">Front desk</h1>
         <p id="pageHint" class="hint"></p>
       </div>
       <div class="top-right">
@@ -58,6 +59,7 @@
 <script src="data.js"></script>
 <script src="core.js"></script>
 <script src="views-ops.js"></script>
+<script src="views-frontdesk.js"></script>
 <script src="views-rooms.js"></script>
 <script src="views-guest.js"></script>
 <script src="views-biz.js"></script>

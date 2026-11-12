@@ -80,7 +80,7 @@
     const r = R.res(d.id), bal = R.balance(r);
     R.modal('Take payment', `<div class="form">
       <label class="field">Amount<input id="payAmt" type="number" value="${bal}" min="1"></label>
-      <label class="field">Method<select id="payMethod"><option>Card (terminal)</option><option>Cash</option><option>Bank transfer</option></select></label></div>
+      <label class="field">Method<select id="payMethod"><option>Cash</option><option>GCash</option><option>Maya</option><option>Card (terminal)</option><option>Bank transfer</option></select></label></div>
       <div class="foot"><button class="btn ghost" data-act="openRes" data-id="${r.id}">Back</button><button class="btn" id="payGo">Record payment</button></div>`, b => {
       b.querySelector('#payGo').onclick = () => { const a = +b.querySelector('#payAmt').value; if (a > 0) { r.paid += a; R.save(); R.toast(`${R.money(a)} received from ${R.guest(r.guestId).name}`); R.render(); R.openRes(r.id); } };
     });
@@ -89,8 +89,8 @@
     const r = R.res(d.id);
     R.modal('Add charge to room ' + r.room, `<div class="form">
       <label class="field full">Description<input id="chDesc" value="Minibar"></label>
-      <label class="field">Department<select id="chDept"><option>Food & beverage</option><option>Spa</option><option>Tours</option><option>Rooms</option><option>Other</option></select></label>
-      <label class="field">Amount (A$)<input id="chAmt" type="number" value="25"></label></div>
+      <label class="field">Department<select id="chDept"><option>Food & beverage</option><option>Spa</option><option>Activities</option><option>Day tour & cottages</option><option>Rooms</option><option>Other</option></select></label>
+      <label class="field">Amount (₱)<input id="chAmt" type="number" value="150"></label></div>
       <div class="foot"><button class="btn ghost" data-act="openRes" data-id="${r.id}">Back</button><button class="btn" id="chGo">Add charge</button></div>`, b => {
       b.querySelector('#chGo').onclick = () => {
         r.folio.push({ date: TODAY, desc: b.querySelector('#chDesc').value, dept: b.querySelector('#chDept').value, amount: +b.querySelector('#chAmt').value });
@@ -110,9 +110,9 @@
     const types = R.S.roomTypes;
     R.modal('New booking', `<div class="form">
       <label class="field full">Guest<select id="nbGuest"><option value="__new">+ New guest…</option>${R.S.guests.slice(0, 60).map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select></label>
-      <label class="field full" id="nbNewWrap">New guest name<input id="nbNew" value="Alex Morgan"></label>
+      <label class="field full" id="nbNewWrap">New guest name<input id="nbNew" value="Juan Dela Cruz"></label>
       <label class="field">Room type<select id="nbType">${types.map(t => `<option value="${t.id}" ${pre.type === t.id ? 'selected' : ''}>${esc(t.name)} — ${R.money(t.base)}</option>`).join('')}</select></label>
-      <label class="field">Channel<select id="nbCh"><option>Direct website</option><option>Phone / email</option><option>Walk-in</option><option>Booking.com</option><option>Expedia</option></select></label>
+      <label class="field">Booked through<select id="nbCh">${['Walk-in', 'Facebook Messenger', 'Phone / text', 'Agoda', 'Booking.com'].map(c => `<option ${pre.ch === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       <label class="field">Arrival<input id="nbArr" type="date" value="${pre.date || addDays(TODAY, 3)}" min="${TODAY}"></label>
       <label class="field">Nights<input id="nbN" type="number" value="3" min="1" max="30"></label>
       <label class="field">Adults<input id="nbA" type="number" value="2" min="1" max="6"></label>
@@ -138,14 +138,14 @@
         if (gid === '__new') {
           gid = R.nextId('G');
           const nm = $('#nbNew').value.trim() || 'New guest';
-          R.S.guests.unshift({ id: gid, name: nm, email: nm.toLowerCase().replace(/\s+/g, '.') + '@example.com', phone: '+61 400 000 000', country: 'Australia', tag: '', stays: 1 });
+          R.S.guests.unshift({ id: gid, name: nm, email: nm.toLowerCase().replace(/\s+/g, '.') + '@example.com', phone: '+63 917 000 0000', country: 'Walk-in', tag: '', stays: 1 });
         }
         const t = R.type($('#nbType').value), n = +$('#nbN').value, a = $('#nbArr').value;
         const room = pre.room && R.roomFree(pre.room, a, n) && R.room(pre.room).type === t.id ? pre.room : (R.freeRooms(t.id, a, n)[0] || {}).no || null;
-        const r = { id: 'KB-' + (++R.S.seq), guestId: gid, type: t.id, room, arrive: a, nights: n, adults: +$('#nbA').value, children: +$('#nbC').value, channel: $('#nbCh').value, rate: t.base, status: 'booked', notes: '', folio: [], paid: 0, eta: '15:00' };
+        const r = { id: 'CR-' + (++R.S.seq), guestId: gid, type: t.id, room, arrive: a, nights: n, adults: +$('#nbA').value, children: +$('#nbC').value, channel: $('#nbCh').value, rate: t.base, status: 'booked', notes: '', folio: [], paid: 0, eta: '14:00' };
         R.S.reservations.push(r);
         R.closeModal(); R.rerender();
-        R.toast(`Booking ${r.id} created${room ? ' — room ' + room + ' assigned' : ''}. Confirmation email sent.`);
+        R.toast(`Booking ${r.id} created${room ? ' — room ' + room + ' assigned' : ''}. Confirmation sent by text.`);
       };
     });
   };
@@ -153,22 +153,23 @@
   // ---------- Start here ----------
   R.views.overview = {
     title: 'Start here',
-    hint: 'A tour of how one guest stay moves through the system. Every screen is clickable and runs on sample data.',
+    hint: 'A tour of how Camsair runs day to day in this system. Every screen is clickable and runs on sample data.',
     render() {
       const steps = [
-        ['Book', 'The guest books on your website, Booking.com, Expedia, or by phone. Availability updates everywhere at once, so the same room is never sold twice.', 'reservations', 'Make a booking'],
-        ['Before arrival', 'The system assigns a room, emails the guest, and offers upgrades and activities. Housekeeping sees which rooms must be ready first.', 'calendar', 'See the room calendar'],
-        ['Check in', 'Front desk only checks a guest into a room that is clean. The bill opens and room nights are posted.', 'frontdesk', 'Check a guest in'],
-        ['During the stay', 'Guests order from the phone app. Spa, tours and restaurant bills go straight to the room. Requests reach the right team.', 'guestapp', 'Open the guest app'],
+        ['Day tour at the gate', 'Walk-in guests pay entrance, rent a cottage and extras at the front desk. Senior and PWD discounts, GCash and change are handled for you.', 'frontdesk', 'Open the till'],
+        ['Book a room', 'Guests book by Facebook Messenger, text, Agoda or as walk-ins. Every booking lands in one list, so the same room is never sold twice.', 'reservations', 'Make a booking'],
+                ['Check in', 'Front desk only checks a guest into a room that is clean. The bill opens and room nights are posted.', 'frontdesk', 'Check a guest in'],
+        ['During the stay', 'Guests order from the phone app. Massage, videoke and restaurant bills go straight to the room. Requests reach the right team.', 'guestapp', 'Open the guest app'],
         ['Check out', 'Front desk settles the bill in one step. The room turns "needs cleaning" and appears on the housekeeper\'s list.', 'housekeeping', 'Clean a room'],
         ['After the stay', 'Reports update by themselves: occupancy, average rate, revenue per department, and where bookings came from.', 'reports', 'See the reports']
       ];
       const tries = [
+        ['frontdesk', 'Sell a day tour: 4 adults, 1 senior and a kubo, paid in cash. Then look at the receipt.'],
         ['frontdesk', 'Check in an arrival whose room is ready, then try one whose room is still dirty.'],
         ['map', 'Click a yellow room on the property map and mark it clean, then ready.'],
         ['guestapp', 'As a guest, ask for extra towels, then switch to Housekeeping to see it arrive.'],
-        ['dining', 'Ring up dinner at the restaurant and charge it to a room number.'],
-        ['maintenance', 'Report a broken air-con and block the room so nobody can be checked into it.']
+        ['dining', 'Ring up sisig and Red Horse at the Poolside Bar and charge it to a room.'],
+        ['maintenance', 'Report a broken aircon and block the room so nobody can be checked into it.']
       ];
       return `<div class="grid g3">${steps.map((s, i) => `
         <div class="panel"><div class="row" style="margin-bottom:6px"><span class="avatar">${i + 1}</span><h2>${s[0]}</h2></div>
@@ -176,12 +177,12 @@
         <div class="grid g2" style="margin-top:16px">
           <div class="panel"><h2>Try these</h2>${tries.map(t => `<div class="list-item"><div class="grow">${t[1]}</div><a class="btn sm" href="#${t[0]}">Go</a></div>`).join('')}</div>
           <div class="panel"><h2>The resort in this demo</h2>
-            <dl class="kv"><dt>Name</dt><dd>Kalinaw Bay Resort (fictional)</dd>
-            <dt>Rooms</dt><dd>${R.S.rooms.length} across 5 buildings</dd>
+            <dl class="kv"><dt>Name</dt><dd>Camsair Resort</dd><dt>Location</dt><dd>Brgy. San Pedro, Initao, Misamis Oriental</dd>
+            <dt>Rooms</dt><dd>${R.S.rooms.length} rooms, ${R.S.dayuse.cottages.length} cottages for day tours</dd>
             ${R.S.roomTypes.map(t => `<dt>${esc(t.name)}</dt><dd>${R.S.rooms.filter(r => r.type === t.id).length} rooms · ${t.size} · sleeps ${t.cap} · from ${R.money(t.base)}</dd>`).join('')}
-            <dt>Facilities</dt><dd>Lagoon Restaurant, Driftwood Pool Bar, Coral Spa, kids club, dive &amp; tour desk, water sports</dd>
+            <dt>Facilities</dt><dd>Swimming pool, kubo and family cottages, pavilion, Camsair Restaurant, Poolside Bar, massage, videoke</dd>
             <dt>Staff</dt><dd>${R.S.staff.length} people in 6 departments</dd></dl>
-            <p class="small muted" style="margin-top:10px">Use "Viewing as" in the sidebar to see what each team sees. Changes are saved in this browser. "Reset sample data" starts over.</p></div>
+            <p class="small muted" style="margin-top:10px">Room types, prices, cottages and staff are placeholders until Camsair sends the real ones. Use "Viewing as" in the sidebar to see what each team sees. Changes are saved in this browser. "Reset sample data" starts over.</p></div>
         </div>`;
     }
   };
@@ -198,7 +199,7 @@
       const ih = L.filter(r => r.status === 'inhouse');
       const dirty = R.S.rooms.filter(r => r.hk === 'dirty').length;
       const occ = R.occupancyOn(TODAY);
-      const rev = R.S.reservations.reduce((s, r) => s + r.folio.filter(f => f.date === TODAY).reduce((a, f) => a + f.amount, 0), 0) + R.S.orders.filter(o => o.date === TODAY).reduce((s, o) => s + o.total, 0);
+      const rev = R.S.reservations.reduce((s, r) => s + r.folio.filter(f => f.date === TODAY).reduce((a, f) => a + f.amount, 0), 0) + R.S.orders.filter(o => o.date === TODAY && !o.inFolio).reduce((s, o) => s + o.total, 0) + R.S.sales.filter(s => s.date === TODAY && s.method !== 'room').reduce((a, s) => a + s.calc.total, 0);
       const alerts = [];
       arr.filter(r => r.status === 'booked' && !r.room).forEach(r => alerts.push(['red', `${R.guest(r.guestId).name} arrives today with no room assigned`, r.id]));
       arr.filter(r => r.status === 'booked' && r.room && R.room(r.room).hk === 'dirty').forEach(r => alerts.push(['amber', `Room ${r.room} must be cleaned before ${R.guest(r.guestId).name} arrives (${r.eta})`, r.id]));
@@ -211,7 +212,7 @@
         <div><b>${occ.pct}%</b><span>Occupancy tonight (${occ.sold}/${R.S.rooms.length})</span></div>
         <div><b>${arr.filter(r => r.status === 'booked').length}</b><span>Arrivals still to come</span></div>
         <div><b>${dep.filter(r => r.status === 'inhouse').length}</b><span>Departures still to go</span></div>
-        <div><b>${ih.length}</b><span>Rooms in house</span></div>
+        <div><b>${R.S.sales.filter(s => s.date === TODAY).reduce((a, s) => a + s.calc.heads, 0)}</b><span>Day guests through the gate</span></div>
         <div><b>${dirty}</b><span>Rooms to clean</span></div>
         <div><b>${R.money(rev)}</b><span>Revenue posted today</span></div>
       </div>
@@ -229,38 +230,7 @@
     }
   };
 
-  // ---------- Front desk ----------
-  let fdTab = 'arrivals', fdQ = '';
-  R.act.fdTab = d => { fdTab = d.tab; R.render(); };
-  R.views.frontdesk = {
-    title: 'Front desk',
-    hint: 'Check guests in and out, assign rooms and settle bills.',
-    how: ['Arrivals: a guest can only be checked in when their room is clean or ready. Click the guest to assign a room.', 'In house: add charges or take payments during the stay.', 'Departures: checking out settles the bill and sends the room to housekeeping automatically.'],
-    render() {
-      const L = R.live();
-      const sets = {
-        arrivals: L.filter(r => r.status === 'booked' && r.arrive <= TODAY),
-        inhouse: L.filter(r => r.status === 'inhouse'),
-        departures: L.filter(r => r.status === 'inhouse' && R.dep(r) <= TODAY)
-      };
-      const q = fdQ.toLowerCase();
-      const rows = sets[fdTab].filter(r => !q || R.guest(r.guestId).name.toLowerCase().includes(q) || (r.room || '').toLowerCase().includes(q) || r.id.toLowerCase().includes(q));
-      const act = r => {
-        if (fdTab === 'arrivals') { const [ok, why] = R.canCheckIn(r); return ok ? `<button class="btn sm" data-act="checkIn" data-id="${r.id}">Check in</button>` : `<span class="small muted">${esc(why)}</span>`; }
-        if (fdTab === 'departures') return `<button class="btn sm" data-act="checkOut" data-id="${r.id}">Check out · ${R.money(R.balance(r))}</button>`;
-        return `<span class="num small">Balance ${R.money(R.balance(r))}</span>`;
-      };
-      return `<div class="panel">
-        <div class="tabs">${[['arrivals', 'Arrivals'], ['inhouse', 'In house'], ['departures', 'Departures']].map(([k, l]) => `<button class="${fdTab === k ? 'on' : ''}" data-act="fdTab" data-tab="${k}">${l} (${sets[k].length})</button>`).join('')}
-        <span style="margin-left:auto" class="row"><input class="search" id="fdSearch" placeholder="Search name, room or booking" value="${esc(fdQ)}"><button class="btn" data-act="newBooking">Walk-in booking</button></span></div>
-        <table><thead><tr><th>Guest</th><th>Room</th><th>Stay</th><th>Status</th><th></th></tr></thead>
-        <tbody>${rows.map(r => R.resRow(r, act(r))).join('') || '<tr><td colspan="5" class="empty">Nobody here right now</td></tr>'}</tbody></table></div>`;
-    },
-    mount(el) {
-      const s = el.querySelector('#fdSearch');
-      s.addEventListener('input', () => { fdQ = s.value; const p = s.selectionStart; R.render(); const n = document.getElementById('fdSearch'); n.focus(); n.setSelectionRange(p, p); });
-    }
-  };
+  // Front desk lives in views-frontdesk.js
 
   // ---------- Reservations ----------
   let rsStatus = 'upcoming', rsChannel = '', rsQ = '';
@@ -268,7 +238,7 @@
   R.views.reservations = {
     title: 'Reservations',
     hint: 'Every booking from every channel in one list.',
-    how: ['Bookings from your website, Booking.com, Expedia and Airbnb all land here automatically.', 'Click "New booking": the system checks live availability and price before saving.', 'Click any booking to assign a room, take a deposit or cancel.'],
+    how: ['Bookings from Facebook Messenger, phone, walk-ins, Agoda and Booking.com all land in this one list.', 'Click "New booking": the system checks live availability and price before saving.', 'Click any booking to assign a room, take a deposit or cancel.'],
     render() {
       const q = rsQ.toLowerCase();
       let L = R.S.reservations.slice();
@@ -328,9 +298,9 @@
         });
       });
       return `<div class="row" style="margin-bottom:10px"><button class="btn ghost sm" data-act="calShift" data-n="-7">← Week</button><button class="btn ghost sm" data-act="calShift" data-n="0">Today</button><button class="btn ghost sm" data-act="calShift" data-n="7">Week →</button>
-        <span class="legend" style="margin:0 0 0 12px"><span><i style="background:var(--ink);border-color:var(--ink)"></i>In house</span><span><i style="background:var(--lagoon);border-color:var(--lagoon)"></i>Booked</span><span><i style="background:#9AB0AD;border-color:#9AB0AD"></i>Checked out</span><span><i style="background:var(--hibiscus);border-color:var(--hibiscus)"></i>Out of order</span></span></div>
+        <span class="legend" style="margin:0 0 0 12px"><span><i style="background:var(--ink);border-color:var(--ink)"></i>In house</span><span><i style="background:var(--sea);border-color:var(--sea)"></i>Booked</span><span><i style="background:#9AB0AD;border-color:#9AB0AD"></i>Checked out</span><span><i style="background:var(--hibiscus);border-color:var(--hibiscus)"></i>Out of order</span></span></div>
         <div class="tape"><table style="table-layout:fixed"><colgroup><col style="width:170px">${dates.map(() => `<col style="width:${W}px">`).join('')}</colgroup>
-        <thead><tr><th style="left:0;z-index:3">Room</th>${dates.map(d => `<th class="${d === TODAY ? 'today-col' : ''}">${new Date(d + 'T12:00').toLocaleDateString('en-AU', { weekday: 'short' })}<br>${new Date(d + 'T12:00').getDate()}</th>`).join('')}</tr></thead>
+        <thead><tr><th style="left:0;z-index:3">Room</th>${dates.map(d => `<th class="${d === TODAY ? 'today-col' : ''}">${new Date(d + 'T12:00').toLocaleDateString('en-PH', { weekday: 'short' })}<br>${new Date(d + 'T12:00').getDate()}</th>`).join('')}</tr></thead>
         <tbody>${rows}</tbody></table></div>`;
     }
   };

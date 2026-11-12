@@ -49,6 +49,7 @@
       const dept = {};
       R.S.reservations.forEach(r => r.folio.forEach(f => { if (f.date >= past[0]) dept[f.dept] = (dept[f.dept] || 0) + f.amount; }));
       R.S.orders.filter(o => !o.inFolio).forEach(o => dept['Food & beverage'] = (dept['Food & beverage'] || 0) + o.total);
+      R.S.sales.filter(s => s.method !== 'room').forEach(s => dept['Day tour & cottages'] = (dept['Day tour & cottages'] || 0) + s.calc.total);
       const dMax = Math.max(...Object.values(dept), 1);
 
       const ch = {};
@@ -69,7 +70,7 @@
         <div class="grid g2">
           <div class="panel"><h2>Revenue by department</h2>${Object.entries(dept).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<div class="hbar"><span>${esc(k)}</span><div class="track"><div class="fill" style="width:${v / dMax * 100}%"></div></div><b class="num right">${R.money(v)}</b></div>`).join('')}</div>
           <div class="panel"><h2>Where bookings come from</h2>${Object.entries(ch).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => { const c = R.S.channelStatus.find(x => x.name === k); return `<div class="hbar"><span>${esc(k)}</span><div class="track"><div class="fill" style="width:${v.n / cMax * 100}%;background:${c && c.commission ? 'var(--sun)' : 'var(--lagoon)'}"></div></div><span class="num right small">${v.n} · ${c && c.commission ? c.commission + '% fee' : 'no fee'}</span></div>`; }).join('')}
-            <p class="small muted" style="margin-top:8px">Teal = no commission. Every booking moved from a booking site to your own website saves 15–18%.</p></div>
+            <p class="small muted" style="margin-top:8px">Teal = no commission. Every booking moved from Agoda or Booking.com to Facebook Messenger or walk-in saves about 15%.</p></div>
           <div class="panel" style="grid-column:1/-1"><h2>Room types</h2><table><thead><tr><th>Type</th><th>Rooms</th><th>Occupancy tonight</th><th>Base rate</th><th>Bookings ahead</th></tr></thead><tbody>
             ${R.S.roomTypes.map(t => { const rooms = R.S.rooms.filter(r => r.type === t.id).length, sold = live.filter(r => r.type === t.id && r.arrive <= TODAY && TODAY < R.dep(r)).length; return `<tr><td><b>${esc(t.name)}</b></td><td>${rooms}</td><td>${Math.round(sold / rooms * 100)}%</td><td>${R.money(t.base)}</td><td>${live.filter(r => r.type === t.id && r.status === 'booked').length}</td></tr>`; }).join('')}
           </tbody></table></div></div>`;
@@ -100,18 +101,19 @@
     hint: 'Room types, prices, seasons and house rules.',
     how: ['Change a base rate here and it applies to new bookings and goes out to every booking site.', 'Seasons raise or lower rates automatically for set dates.', 'In the real system these settings are for managers only.'],
     render() {
-      return `<div class="grid g2"><div class="panel"><h2>Room types</h2><table><thead><tr><th>Type</th><th>Rooms</th><th>Details</th><th>Base rate (A$)</th></tr></thead><tbody>
+      return `<div class="grid g2"><div class="panel"><h2>Room types</h2><table><thead><tr><th>Type</th><th>Rooms</th><th>Details</th><th>Base rate (₱)</th></tr></thead><tbody>
         ${R.S.roomTypes.map(t => `<tr><td><b>${esc(t.name)}</b></td><td>${R.S.rooms.filter(r => r.type === t.id).length}</td><td class="small muted">${t.size} · ${esc(t.bed)} · sleeps ${t.cap}<br>${esc(t.view)}</td><td><input type="number" value="${t.base}" style="width:90px" class="search" data-change="setRate" data-id="${t.id}" aria-label="${esc(t.name)} base rate"></td></tr>`).join('')}
         </tbody></table></div>
         <div class="stack"><div class="panel"><h2>Seasons</h2><table><tbody>
-          <tr><td><b>Peak</b><div class="small muted">20 Dec – 31 Jan, Easter</div></td><td class="right">+35%</td></tr>
-          <tr><td><b>Shoulder</b><div class="small muted">Sep – Nov, Mar – Apr</div></td><td class="right">+10%</td></tr>
-          <tr><td><b>Low</b><div class="small muted">May – Aug</div></td><td class="right">−15%</td></tr>
-          <tr><td><b>Last-minute rule</b><div class="small muted">Over 85% full within 3 days</div></td><td class="right">+20%</td></tr></tbody></table></div>
+          <tr><td><b>Holy Week</b><div class="small muted">Maundy Thursday to Easter Sunday</div></td><td class="right">+30%</td></tr>
+          <tr><td><b>Summer</b><div class="small muted">March – May</div></td><td class="right">+20%</td></tr>
+          <tr><td><b>Christmas season</b><div class="small muted">20 Dec – 2 Jan</div></td><td class="right">+20%</td></tr>
+          <tr><td><b>Rainy season</b><div class="small muted">June – November, weekdays</div></td><td class="right">−10%</td></tr></tbody></table></div>
         <div class="panel"><h2>House rules</h2><dl class="kv">
-          <dt>Check-in / out</dt><dd>3:00 pm / 11:00 am</dd><dt>Deposit</dt><dd>30% at booking (direct)</dd>
-          <dt>Cancellation</dt><dd>Free until 7 days before arrival</dd><dt>Tax</dt><dd>Prices include 10% GST</dd>
-          <dt>Card details</dt><dd>Held by the payment provider, never stored by the resort</dd></dl></div></div></div>`;
+          <dt>Check-in / out</dt><dd>2:00 pm / 12:00 noon</dd><dt>Deposit</dt><dd>50% by GCash to confirm a Messenger or phone booking</dd>
+          <dt>Cancellation</dt><dd>Deposit is non-refundable, can be moved to another date once</dd><dt>Tax</dt><dd>Prices include 12% VAT</dd>
+          <dt>Senior / PWD</dt><dd>20% discount and VAT exemption on their share, with valid ID</dd>
+          <dt>Day tour</dt><dd>8 am – 5 pm · night swim 6 – 10 pm · corkage applies to outside lechon and drinks</dd></dl></div></div></div>`;
     }
   };
 })();

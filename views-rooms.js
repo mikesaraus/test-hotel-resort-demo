@@ -46,15 +46,15 @@
   R.act.mapFilter = d => { mapFilter = mapFilter === d.f ? '' : d.f; R.render(); };
   R.views.map = {
     title: 'Property map',
-    hint: 'Every room at the resort, coloured by its cleaning status. A dark line along the bottom means a guest is in the room.',
-    how: ['Each tile is a room, laid out by building from the garden down to the beach.', 'Click a room to see who is in it, who arrives next, and to change its status.', 'Click a status in the key to show only those rooms.'],
+    hint: 'Every room at Camsair, coloured by its cleaning status. A dark line along the bottom means a guest is in the room.',
+    how: ['Each tile is a room, laid out by building around the swimming pool.', 'Click a room to see who is in it, who arrives next, and to change its status.', 'Click a status in the key to show only those rooms.'],
     render() {
       const counts = {}; R.S.rooms.forEach(r => counts[r.hk] = (counts[r.hk] || 0) + 1);
       const tile = room => {
         const ih = R.inhouseIn(room.no), na = nextArrival(room.no);
         const arrToday = na && na.arrive === TODAY;
         const dim = mapFilter && room.hk !== mapFilter ? 'opacity:.25' : '';
-        return `<button class="tile st-${room.hk} ${ih ? 'occ' : ''} ${room.zone === 'beach' || room.zone === 'pool' ? 'villa' : ''}" style="${dim}" data-act="openRoom" data-no="${room.no}" aria-label="Room ${room.no}, ${SHORT[room.hk]}${ih ? ', occupied' : ''}${arrToday ? ', arrival today' : ''}">
+        return `<button class="tile st-${room.hk} ${ih ? 'occ' : ''} ${room.zone === 'villa' || room.zone === 'barkada' ? 'villa' : ''}" style="${dim}" data-act="openRoom" data-no="${room.no}" aria-label="Room ${room.no}, ${SHORT[room.hk]}${ih ? ', occupied' : ''}${arrToday ? ', arrival today' : ''}">
           <b>${room.no}</b><i>${SHORT[room.hk]}${arrToday ? ' · Arr' : ''}</i></button>`;
       };
       const zone = z => {
@@ -64,8 +64,10 @@
       const key = [['inspected', 'Ready for guests'], ['clean', 'Clean, not yet inspected'], ['dirty', 'Needs cleaning'], ['ooo', 'Out of order']];
       return `<div class="legend">${key.map(([k, l]) => `<span><button class="chip ${mapFilter === k ? 'ink' : ''}" style="border:0;cursor:pointer" data-act="mapFilter" data-f="${k}"><i class="st-${k}" style="width:10px;height:10px;border-radius:3px;border:2px solid;display:inline-block;margin-right:4px;vertical-align:-1px"></i>${l} · ${counts[k] || 0}</button></span>`).join('')}
         <span class="muted">"Arr" = guest arriving today</span></div>
-        <div class="bay"><div class="zones">${['garden', 'ocean', 'family', 'pool', 'beach'].map(id => zone(R.S.zones.find(z => z.id === id))).join('')}</div>
-        <span class="sea-label">Kalinaw Bay</span></div>`;
+        <div class="bay"><div class="zones">${['main', 'family'].map(id => zone(R.S.zones.find(z => z.id === id))).join('')}
+        <div class="pool-deco" aria-hidden="true"><span>Swimming pool</span></div>
+        ${['pool', 'villa', 'barkada'].map(id => zone(R.S.zones.find(z => z.id === id))).join('')}</div>
+        <span class="sea-label">Camsair Resort grounds</span></div>`;
     }
   };
 
@@ -122,9 +124,9 @@
   // ---------- Maintenance ----------
   R.act.newTicket = d => {
     R.modal('Report a problem', `<div class="form">
-      <label class="field">Room or area<select id="tkRoom">${['Pool area', 'Lobby', 'Restaurant', 'Spa'].concat(R.S.rooms.map(r => r.no)).map(x => `<option ${x === d.room ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+      <label class="field">Room or area<select id="tkRoom">${['Swimming pool', 'Lobby', 'Restaurant', 'Pavilion', ...R.S.dayuse.cottages.map(c => c.name)].concat(R.S.rooms.map(r => r.no)).map(x => `<option ${x === d.room ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
       <label class="field">Priority<select id="tkPr"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label>
-      <label class="field full">What's wrong?<input id="tkTitle" value="Air-con not cooling"></label>
+      <label class="field full">What's wrong?<input id="tkTitle" value="Aircon not cooling"></label>
       <label class="full row small"><input type="checkbox" id="tkBlock"> Block this room so nobody can be checked in until it's fixed</label></div>
       <div class="foot"><button class="btn ghost" id="tkCancel">Cancel</button><button class="btn" id="tkGo">Send to maintenance</button></div>`, b => {
       b.querySelector('#tkCancel').onclick = R.closeModal;

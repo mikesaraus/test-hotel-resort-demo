@@ -1,6 +1,6 @@
 /* Core: state, persistence, routing, helpers, modal, toast */
 (function () {
-  const KEY = 'kalinaw-demo-v1';
+  const KEY = 'camsair-demo-v1';
   const { addDays, TODAY } = R.util;
   R.views = {};
   R.act = {};
@@ -19,9 +19,10 @@
   // ---------- helpers ----------
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   R.esc = esc;
-  R.money = n => 'A$' + Math.round(n).toLocaleString('en-AU');
-  R.fmt = s => new Date(s + 'T12:00:00').toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' });
-  R.fmtShort = s => new Date(s + 'T12:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' });
+  R.money = n => '₱' + Math.round(n).toLocaleString('en-PH');
+  R.peso = n => '₱' + (+n).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  R.fmt = s => new Date(s + 'T12:00:00').toLocaleDateString('en-PH', { weekday: 'short', day: 'numeric', month: 'short' });
+  R.fmtShort = s => new Date(s + 'T12:00:00').toLocaleDateString('en-PH', { day: 'numeric', month: 'short' });
   R.guest = id => R.S.guests.find(g => g.id === id) || { name: 'Unknown guest' };
   R.res = id => R.S.reservations.find(r => r.id === id);
   R.room = no => R.S.rooms.find(r => r.no === no);
@@ -65,24 +66,24 @@
   // ---------- navigation ----------
   const NAV = [
     { grp: null, items: [['overview', '✦', 'Start here']] },
-    { grp: 'Daily operations', items: [['today', '☀', 'Today'], ['frontdesk', '🛎', 'Front desk'], ['reservations', '📖', 'Reservations'], ['calendar', '▦', 'Room calendar'], ['map', '🗺', 'Property map'], ['housekeeping', '🧺', 'Housekeeping'], ['requests', '💬', 'Guest requests']] },
+    { grp: 'Daily operations', items: [['frontdesk', '🛎', 'Front desk'], ['today', '☀', 'Today'], ['reservations', '📖', 'Reservations'], ['calendar', '▦', 'Room calendar'], ['map', '🗺', 'Property map'], ['housekeeping', '🧺', 'Housekeeping'], ['requests', '💬', 'Guest requests']] },
     { grp: 'Guest services', items: [['activities', '🌊', 'Activities & spa'], ['dining', '🍽', 'Restaurant & bar'], ['guests', '👤', 'Guests']] },
     { grp: 'Back office', items: [['maintenance', '🔧', 'Maintenance'], ['staff', '🗓', 'Staff roster'], ['reports', '📈', 'Reports'], ['channels', '🔗', 'Booking channels'], ['setup', '⚙', 'Rooms & rates']] },
     { grp: 'Guest side', items: [['guestapp', '📱', 'Guest phone app']] }
   ];
   const ROLES = {
     manager: null,
-    frontdesk: ['overview', 'today', 'frontdesk', 'reservations', 'calendar', 'map', 'requests', 'activities', 'guests', 'guestapp'],
+    frontdesk: ['frontdesk', 'overview', 'today', 'reservations', 'calendar', 'map', 'requests', 'activities', 'guests', 'guestapp'],
     housekeeping: ['overview', 'housekeeping', 'map', 'requests', 'maintenance'],
     fnb: ['overview', 'dining', 'activities', 'requests'],
     guest: ['guestapp']
   };
-  R.role = 'manager';
+  R.role = 'frontdesk'; // the mockup opens on the front desk till
   R.params = {};
 
   function badge(id) {
     if (id === 'requests') return R.S.requests.filter(q => q.status === 'new').length;
-    if (id === 'frontdesk') return R.live().filter(r => r.status === 'booked' && r.arrive === TODAY).length;
+    if (id === 'frontdesk') return R.live().filter(r => r.status === 'booked' && r.arrive <= TODAY).length;
     if (id === 'maintenance') return R.S.tickets.filter(t => t.status !== 'done' && t.priority === 'urgent').length;
     return 0;
   }
@@ -103,8 +104,8 @@
 
   R.go = function (view, params) { R.params = params || {}; if (location.hash === '#' + view) R.render(); else location.hash = view; };
   R.current = function () {
-    let v = location.hash.slice(1) || 'overview';
     const allow = ROLES[R.role];
+    let v = location.hash.slice(1) || (allow ? allow[0] : 'overview'); // each team lands on its own first screen
     if (!R.views[v] || (allow && !allow.includes(v))) v = allow ? allow[0] : 'overview';
     return v;
   };
