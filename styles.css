@@ -257,10 +257,15 @@ table.roster td{padding:6px 4px}
 .seg button.on{background:var(--lagoon);color:#fff}
 .seg button.on small{color:#F3E1DF}
 .pax{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.pax-card{border:1px solid var(--line);border-radius:var(--r-m);padding:10px 12px;display:flex;flex-direction:column;gap:10px;background:#fff}
+/* the steppers sit on the bottom edge of every card, whatever the text above them */
+.pax-card{border:1px solid var(--line);border-radius:var(--r-m);padding:12px 14px;display:flex;flex-direction:column;gap:12px;background:#fff}
+.pax-info{display:flex;flex-direction:column;gap:2px}
+.pax-price{font-size:14px;font-weight:600;color:var(--ink-2);margin-top:2px}
+.pax-price small{font-weight:500}
 .pax-card.has{border-color:var(--lagoon);background:#FDF7F5}
 .pax-card b{display:block}
 .pax-card small{font-size:12px;color:var(--ink-3)}
+.pax-card .stepper{margin-top:auto}
 .stepper{display:flex;align-items:center;justify-content:space-between}
 .stepper button{width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--bg);font-size:22px;font-weight:600;cursor:pointer;color:var(--lagoon)}
 .stepper button:hover:not(:disabled){background:var(--lagoon-l)}

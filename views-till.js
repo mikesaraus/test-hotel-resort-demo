@@ -74,7 +74,7 @@
 
   // ======================= Day tour till =======================
   const cat = () => R.S.dayuse;
-  const PAX = [['adult', 'Adult', 'over 12'], ['child', 'Child', '3 to 12'], ['senior', 'Senior / PWD', 'ID needed, 20% off'], ['toddler', 'Below 3', 'free']];
+  const PAX = [['adult', 'Adult', 'over 12'], ['child', 'Child', '3 to 12'], ['senior', 'Senior / PWD', 'ID needed, 20% off'], ['toddler', 'Below 3', 'babies and toddlers']];
   const nowSession = () => new Date().getHours() >= 17 ? 'night' : 'day';
   const blank = () => ({ session: nowSession(), pax: { adult: 0, child: 0, senior: 0, toddler: 0 }, cottages: [], items: [], method: 'cash', tendered: '', ref: '', seniorId: '', roomRes: '', name: '', custom: [], prepaid: 0, vbId: '', overNote: '', inhouse: '', freeHeads: 0, voucher: null });
   // overnight guests using the day-tour area: their people on the booking get in free, the rest are visitors
@@ -244,7 +244,7 @@
       const session = `<div class="seg" role="group" aria-label="Session">${[['day', 'Day tour', D.hours.day], ['night', 'Night swim', D.hours.night]].map(([k, l, h]) => `<button class="${T.session === k ? 'on' : ''}" aria-pressed="${T.session === k}" data-act="fdSession" data-s="${k}"><b>${l}</b><small>${h}</small></button>`).join('')}</div>`;
       const pax = `<div class="pax">${PAX.map(([k, l, sub]) => {
         const price = k === 'toddler' ? 0 : k === 'child' ? ent.child : ent.adult;
-        return `<div class="pax-card ${T.pax[k] ? 'has' : ''}"><div><b>${l}</b><small>${sub} · ${price ? R.money(price) : 'Free'}</small></div>
+        return `<div class="pax-card ${T.pax[k] ? 'has' : ''}"><div class="pax-info"><b>${l}</b><small>${sub}</small><span class="pax-price num">${price ? R.money(price) : 'Free'}${k === 'senior' ? ' <small>less 20%</small>' : ''}</span></div>
           <div class="stepper"><button data-act="fdPax" data-k="${k}" data-n="-1" aria-label="One less ${l}" ${T.pax[k] ? '' : 'disabled'}>−</button><output aria-live="polite">${T.pax[k]}</output><button data-act="fdPax" data-k="${k}" data-n="1" aria-label="One more ${l}">+</button></div></div>`;
       }).join('')}</div>`;
       const cottages = `<div class="cot-row">${D.cottages.map(x => {
