@@ -1,0 +1,138 @@
+/* Guest booking page. Phone first: big tap targets, one column, the total and next button docked at the bottom. */
+.book-page{background:var(--bg);min-height:100dvh;display:flex;flex-direction:column}
+.bk-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 20px;background:#4B1519;color:#F1E6D8}
+.bk-brand{display:flex;flex-direction:column;align-items:flex-start;text-decoration:none;color:#FBF6EE}
+.bk-brand strong{font-family:var(--head);font-weight:400;font-size:24px;letter-spacing:.09em;line-height:1}
+.bk-brand .brand-rule{margin-top:4px}
+.bk-top-note{font-size:13px;color:#E0CCB4}
+.bk-top-note b{color:#FBF6EE;font-weight:600}
+.bk-main{flex:1;width:100%;max-width:1040px;margin:0 auto;padding:20px 16px 40px;outline:none}
+.bk-foot{text-align:center;padding:18px 16px 28px;font-size:13px;color:var(--ink-3)}
+.bk-foot p{margin:2px 0}
+
+/* what to book */
+.bk-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}
+.bk-tabs button{display:flex;align-items:center;gap:10px;text-align:left;background:var(--surface);border:1.5px solid #D6C8B3;border-radius:14px;padding:12px 14px;cursor:pointer;font:inherit;color:var(--ink);min-height:64px}
+.bk-tabs button .i{width:24px;height:24px;color:var(--ink-3);flex:none}
+.bk-tabs button b{display:block;font-size:15px}
+.bk-tabs button small{display:block;font-size:12px;color:var(--ink-3)}
+.bk-tabs button.on{border-color:var(--lagoon);background:#FDF7F5;box-shadow:inset 0 0 0 1px var(--lagoon)}
+.bk-tabs button.on .i{color:var(--lagoon)}
+
+/* steps */
+.bk-progress{display:flex;gap:6px;list-style:none;margin:0 0 18px;padding:0;counter-reset:s}
+.bk-progress li{flex:1;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--ink-3);padding-top:8px;border-top:3px solid #E4D9C8}
+.bk-progress li span{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;background:#E4D9C8;color:var(--ink-2);flex:none}
+.bk-progress li.on{color:var(--ink);border-color:var(--lagoon)}
+.bk-progress li.on span{background:var(--lagoon);color:#fff}
+.bk-progress li.done{color:var(--ink-2);border-color:#C79A98}
+.bk-progress li.done span{background:var(--palm);color:#fff}
+
+.bk-body h1{font-family:var(--head);font-weight:400;font-size:30px;line-height:1.15;outline:none}
+.bk-body .lead{color:var(--ink-2);margin:6px 0 16px;font-size:15px}
+.bk-back{display:inline-flex;align-items:center;gap:4px;background:none;border:0;padding:6px 0;margin-bottom:6px;color:var(--lagoon);font:600 14px var(--body);cursor:pointer;min-height:36px}
+.bk-card{background:var(--surface);box-shadow:var(--edge);border-radius:16px;padding:18px;margin-bottom:16px}
+.bk-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+/* fields: labels always visible, 16px inputs (no zoom on iPhone), errors right under the field */
+.bk-field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.bk-field label,.bk-choice legend{font-weight:700;font-size:14px;color:var(--ink)}
+.bk-field .opt{font-weight:400;color:var(--ink-3)}
+.bk-field input,.bk-field select,.bk-field textarea{font-size:16px;padding:12px 14px;border:1.5px solid var(--line-strong);border-radius:12px;background:#fff;color:var(--ink);min-height:50px;width:100%}
+.bk-field textarea{min-height:76px;resize:vertical}
+.bk-field input:focus,.bk-field select:focus,.bk-field textarea:focus{border-color:var(--lagoon);outline:3px solid rgba(122,31,36,.15);outline-offset:0}
+.bk-field .hint{font-size:13px;color:var(--ink-3)}
+.has-err input,.has-err select,.has-err textarea{border-color:var(--hibiscus)}
+.err{color:var(--hibiscus);font-size:13px;font-weight:600;margin:4px 0 8px}
+.bk-step-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid #EFE7DA}
+.bk-step-row b{display:block;font-size:15px}
+.bk-step-row small{display:block;font-size:13px;color:var(--ink-3)}
+.bk-stepper{display:flex;align-items:center;gap:12px}
+.bk-stepper button{width:44px;height:44px;border-radius:50%;border:1.5px solid var(--line-strong);background:#fff;color:var(--lagoon);font-size:22px;font-weight:600;cursor:pointer}
+.bk-stepper button:disabled{opacity:.35;cursor:default}
+.bk-stepper output{min-width:2ch;text-align:center;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+.bk-choice{border:0;padding:0;margin:0 0 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bk-choice legend{margin-bottom:6px;padding:0}
+.bk-opt{position:relative;cursor:pointer}
+.bk-opt input{position:absolute;opacity:0}
+.bk-opt span{display:flex;flex-direction:column;gap:2px;border:1.5px solid #D6C8B3;border-radius:12px;padding:12px 14px;background:#fff;min-height:58px}
+.bk-opt small{font-size:12px;color:var(--ink-3)}
+.bk-opt input:checked + span{border-color:var(--lagoon);background:#FDF7F5;box-shadow:inset 0 0 0 1px var(--lagoon)}
+.bk-opt input:focus-visible + span{outline:3px solid var(--gold);outline-offset:2px}
+.bk-pay{grid-template-columns:repeat(3,1fr)}
+.bk-check{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin:4px 0 6px;cursor:pointer}
+.bk-check input{width:22px;height:22px;flex:none;margin-top:1px;accent-color:var(--lagoon)}
+.bk-check.has-err span{color:var(--hibiscus)}
+.bk-go{margin-top:6px}
+.btn.big .i{color:currentColor}
+
+/* rooms and cottages */
+.bk-rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px;margin-bottom:16px}
+.bk-room{background:var(--surface);box-shadow:var(--edge);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;border:2px solid transparent}
+.bk-room.picked{border-color:var(--lagoon)}
+.bk-room.off{opacity:.6}
+.bk-pic{height:118px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#5B4641}
+.bk-pic .i{width:40px;height:40px;stroke-width:1.4}
+.bk-pic span{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.bk-room-body{padding:14px 16px 16px;display:flex;flex-direction:column;gap:6px;flex:1}
+.bk-room h2{font-size:18px}
+.bk-facts{font-size:13px;color:var(--ink-2);display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.bk-facts .i{width:15px;height:15px;color:var(--ink-3);vertical-align:-3px}
+.bk-price b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
+.bk-price span{font-size:13px;color:var(--ink-3)}
+.bk-left{font-size:13px;font-weight:600;color:var(--palm)}
+.bk-left.low{color:#8C1D17}
+.bk-room .btn{margin-top:auto;justify-content:center;min-height:46px}
+.bk-none{text-align:center}
+.bk-none .btn{margin-top:10px}
+
+/* details + payment with a summary alongside */
+.bk-layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.bk-aside{position:sticky;top:16px}
+.bk-sum{background:var(--surface);box-shadow:var(--edge);border-radius:16px;padding:16px 18px}
+.bk-sum h3{font-family:var(--head);font-weight:400;font-size:20px;margin-bottom:8px}
+.bk-sum p{margin-bottom:8px;font-size:14px}
+.bk-line{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:4px 0;font-variant-numeric:tabular-nums}
+.bk-line.total{border-top:1px solid var(--line);margin-top:6px;padding-top:8px;font-size:16px}
+.bk-line.due{background:#FDF7F5;margin:6px -10px 0;padding:8px 10px;border-radius:10px;color:var(--lagoon)}
+.bk-policy{background:var(--bg);border-radius:12px;padding:12px 14px;font-size:14px;margin:4px 0 12px}
+.bk-policy ul{margin:6px 0 0;padding-left:18px}
+.bk-policy li{margin:3px 0}
+
+/* done */
+.bk-done{max-width:620px;margin:0 auto;text-align:center}
+.bk-done-ico{width:64px;height:64px;border-radius:50%;background:var(--palm);color:#fff;display:grid;place-items:center;margin:8px auto 12px}
+.bk-done-ico .i{width:34px;height:34px;stroke-width:2.6}
+.bk-ref{font-size:18px;letter-spacing:.04em;background:var(--sun-l);padding:2px 8px;border-radius:8px}
+.bk-done .bk-card{text-align:left}
+.bk-done-card dl{display:grid;grid-template-columns:150px 1fr;gap:8px 12px;margin:0;font-size:15px}
+.bk-done-card dt{color:var(--ink-3)}
+.bk-done-card dd{margin:0;font-weight:600}
+.bk-next{margin:8px 0 0;padding-left:18px;font-size:14px}
+.bk-next li{margin:4px 0}
+.center{text-align:center;justify-content:center}
+
+/* the docked total and button: phones and small tablets only */
+.bk-dock{display:none}
+@media screen and (max-width:820px){
+  .bk-layout{grid-template-columns:1fr}
+  .bk-aside{position:static;order:-1}
+  .bk-aside .bk-line:not(.total):not(.due){display:none}
+  .bk-dock{display:flex;align-items:center;justify-content:space-between;gap:12px;position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);box-shadow:0 -6px 20px rgba(43,27,24,.12);padding:10px 16px calc(10px + env(safe-area-inset-bottom))}
+  .bk-dock small{display:block;font-size:12px;color:var(--ink-3)}
+  .bk-dock b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+  .bk-dock .btn{min-height:48px;padding:0 18px}
+  body.has-dock .bk-main{padding-bottom:110px}
+  body.has-dock .bk-body .bk-go{display:none}
+}
+@media screen and (max-width:520px){
+  .bk-two,.bk-pay{grid-template-columns:1fr}
+  .bk-tabs button{padding:10px}
+  .bk-tabs button small{display:none}
+  .bk-progress li{font-size:0;gap:0;justify-content:center}
+  .bk-progress li span{font-size:12px}
+  .bk-progress li.on{font-size:12px;gap:6px;flex:2}
+  .bk-body h1{font-size:26px}
+  .bk-done-card dl{grid-template-columns:1fr}
+  .bk-done-card dd{margin-bottom:6px}
+}

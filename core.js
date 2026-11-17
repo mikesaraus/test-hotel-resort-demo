@@ -20,6 +20,7 @@
     }
     if (S.modules.roster === undefined) S.modules.roster = false;
     if (S.rules.guestEntranceFree === undefined) S.rules.guestEntranceFree = true;
+    if (S.sources && !S.sources.some(x => x.name === 'Website')) S.sources.splice(0, 0, { name: 'Website', commission: 0 });
     // older seasons: "MM-DD to MM-DD, weeknights" → the new format (Holy Week now follows Easter)
     S.seasons.forEach(s => {
       if (s.when) return;
@@ -54,7 +55,7 @@
   R.res = id => R.S.reservations.find(r => r.id === id);
   R.room = no => R.S.rooms.find(r => r.no === no);
   R.type = id => R.S.roomTypes.find(t => t.id === id);
-  R.staff = id => R.S.staff.find(s => s.id === id) || { name: 'Unassigned' };
+  R.staff = id => R.S.staff.find(s => s.id === id) || { name: id === 'web' ? 'Booking website' : id === 'guest' ? 'Guest app' : 'Unassigned' };
   R.dep = r => addDays(r.arrive, r.nights);
   R.stayValue = r => r.rates.reduce((a, b) => a + b, 0);
   R.avgRate = r => r.rates.length ? R.stayValue(r) / r.rates.length : 0;
@@ -346,7 +347,8 @@
 
   // ---------- demo guide (mockup only) ----------
   R.act.guide = () => R.modal('Demo guide', `<p class="muted" style="margin-bottom:10px">Things to try. Use "Sign in as" (top right) to switch between staff.</p>
-    ${[['Kristine (front desk)', 'Check in an arrival. The registration card asks for an ID. Try one whose room is dirty.'],
+    ${[['Guest', 'Open "Guest booking site" in the sidebar: book a room or a cottage, then see it appear at the front desk.'],
+       ['Kristine (front desk)', 'Check in an arrival. The registration card asks for an ID. Try one whose room is dirty.'],
        ['Kristine', 'Check out a departure with a balance. Payment comes first, then the receipt.'],
        ['Kristine', 'Open a booking, Bill tab, and void a charge. Dennis (supervisor) has to approve with PIN 1234.'],
        ['Kristine', 'Day pass: sell a day tour with a senior and a kubo. Try 10 guests in one kubo (it holds 8): a note is needed. Then close the shift under Cashier.'],
@@ -387,6 +389,13 @@
       if (el && R.act[el.dataset.change]) R.act[el.dataset.change](el.dataset, el, e);
     });
     window.addEventListener('hashchange', R.render);
+    window.addEventListener('storage', e => {
+      if (e.key !== KEY || !e.newValue) return;
+      const before = R.S.reservations.length + R.S.venueBookings.length;
+      R.load(); R.render();
+      const added = R.S.reservations.length + R.S.venueBookings.length - before;
+      if (added > 0) R.toast(`${added} new booking${added > 1 ? 's' : ''} from the website`);
+    });
     document.getElementById('resetDemo').addEventListener('click', () => R.confirm('Reset sample data?', 'All changes in this browser are lost and the demo starts over.', 'Reset', R.reset, true));
     document.getElementById('modalClose').addEventListener('click', R.closeModal);
     document.getElementById('modalBack').addEventListener('mousedown', e => { if (e.target.id === 'modalBack') R.closeModal(); });

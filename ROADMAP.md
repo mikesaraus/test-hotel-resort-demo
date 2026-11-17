@@ -15,6 +15,7 @@ This file lists what the real build still needs.
 | Cashier | Shifts, cash count, X / Z reading, receipt register in number order |
 | Rooms | Property map and housekeeping board (occupied / vacant kept apart from dirty / clean / inspected), out of order, Undo for quick mistakes. Managers edit buildings, map layout, rooms, room types, cottages and entrance fees in Settings |
 | Tasks | Guest requests and repairs with any status change, waiting-on-parts with an expected date, overdue flags, history and updates |
+| Booking website | book.html: guests book a room or reserve a cottage in 4 steps (dates, choice, details, deposit), phone first; bookings land in the PMS as source "Website" |
 | Seasons | Every year / this year only / follows Easter / weekend of the last Monday; days of the week; room nights, Day pass, or late walk-in rooms; optional time window; Philippine presets; 12-month calendar |
 | Management | Night audit and business date, reports (business health, daily manager report, revenue, day tour, operations), settings, roles and permissions, audit log. Staff roster is built but switched off (Settings → Modules) |
 | Add-ons | Restaurant & bar point of sale, activities & spa, guest app (switch on in Settings → Modules) |
@@ -22,7 +23,7 @@ This file lists what the real build still needs.
 ## For the real build
 
 ### Should have
-1. **Direct booking page** with GCash / Maya / card deposits through a payment gateway (PayMongo or Xendit). Biggest money lever: every booking moved off Agoda / Booking.com keeps about 15% more.
+1. **Real payments for the booking website** (built in the mockup): GCash / Maya / card deposits through a payment gateway (PayMongo or Xendit), plus a "Manage my booking" page. Biggest money lever: every booking moved off Agoda / Booking.com keeps about 15% more.
 2. **Channel manager connection** (Agoda, Booking.com) so availability and rates stay in sync both ways. Brings back "close a night on booking sites" (stop-sell).
 3. **Works offline** at the front desk and sales counters, and syncs when the internet is back.
 4. **Accounting export** (QuickBooks, Xero or Excel).

@@ -484,6 +484,8 @@
       const newReq = R.S.tasks.filter(t => t.kind === 'request' && t.status === 'new').length;
       if (newReq) ar('amber', `${newReq} new guest request${newReq > 1 ? 's' : ''}`, `href="#tasks"`);
       ih.filter(r => R.guest(r.guestId).tag === 'VIP').forEach(r => ar('teal', `VIP in house: ${R.guest(r.guestId).name}, room ${r.room}`, `data-act="openRes" data-id="${r.id}"`));
+      const web = R.S.reservations.filter(r => r.channel === 'Website' && r.created === day && r.status === 'booked').length + R.S.venueBookings.filter(v => v.source === 'Website' && v.created === day && v.status === 'booked').length;
+      if (web) ar('teal', `${web} new booking${web > 1 ? 's' : ''} from the website today`, `href="#reservations"`);
       if (day < R.util.realToday()) ar('red', 'The night audit for ' + R.fmt(day) + ' has not been run', `href="#audit"`);
       return `
       <div class="pulse">
