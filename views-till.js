@@ -84,7 +84,9 @@
     return { onBooking, free };
   };
   let T = blank(), extraCat = 'Rentals';
-  const calc = () => R.calcTicket(T, cat());
+  R.dayPassSeason = () => R.seasonOn(bd(), null, 'daypass', R.now());
+  const factor = () => { const s = R.dayPassSeason(); return s ? 1 + s.pct / 100 : 1; };
+  const calc = () => R.calcTicket(Object.assign({}, T, { factor: factor() }), cat());
   const due = c => Math.max(0, Math.round((c.total - (T.prepaid || 0)) * 100) / 100);
   // how many guests the chosen cottages hold; over that, the cashier must write why
   const capOf = c => { const cap = T.cottages.reduce((s, id) => s + R.venue(id).cap, 0); return { cap, over: T.cottages.length > 0 && c.heads > cap }; };
@@ -128,7 +130,7 @@
     if (!R.need('till')) return;
     const c = calc(), why = problem(c);
     if (why) return R.toast(why, 'warn');
-    const sale = { kind: 'daytour', session: T.session, pax: { ...T.pax }, cottages: T.cottages.slice(), items: T.items.map(x => ({ ...x })), name: T.name.trim(), seniorId: T.seniorId.trim(), overNote: capOf(c).over ? T.overNote.trim() : '', freeHeads: T.freeHeads, inhouse: T.inhouse, voucher: T.voucher };
+    const sale = { kind: 'daytour', session: T.session, pax: { ...T.pax }, cottages: T.cottages.slice(), items: T.items.map(x => ({ ...x })), name: T.name.trim(), seniorId: T.seniorId.trim(), overNote: capOf(c).over ? T.overNote.trim() : '', freeHeads: T.freeHeads, inhouse: T.inhouse, voucher: T.voucher, season: R.dayPassSeason() ? R.dayPassSeason().name : '' };
     if (T.voucher && T.voucher.code !== 'MANUAL') { const v = R.S.vouchers.find(x => x.code === T.voucher.code); if (v) v.uses++; }
     const vb = T.vbId && R.S.venueBookings.find(v => v.id === T.vbId);
     if (vb) Object.assign(sale, { prepaid: T.prepaid, vbId: vb.id, depositOR: vb.payments.map(p => p.or).join(', ') });
@@ -229,12 +231,14 @@
       const todays = R.S.sales.filter(s => s.date === bd() && s.kind === 'daytour');
       const heads = todays.reduce((s, x) => s + x.calc.heads, 0);
       const free = D.cottages.filter(x => !used[x.id]).length;
-      const ent = D.entrance[T.session];
+      const f = factor(), dps = R.dayPassSeason(), adj = n => Math.round(n * f);
+      const ent = { adult: adj(D.entrance[T.session].adult), child: adj(D.entrance[T.session].child) };
       const { cap: capPicked, over } = capOf(c);
 
       const ih = T.inhouse && R.res(T.inhouse);
       const bar = `<div class="till-bar ${ih ? 'on' : ''}">${ih ? `${R.icon('bed')}<div class="grow"><b>Overnight guest: room ${ih.room}, ${esc(R.guest(ih.guestId).name)}</b><div class="small">${T.freeHeads} of ${ih.adults + ih.children} on the booking get in free ${R.S.rules.guestEntranceFree ? '' : '(off in Settings)'}<span class="mini-step" style="display:inline-flex;margin-left:8px"><button class="btn sm ghost" data-act="fdFree" data-n="-1" aria-label="One fewer overnight guest" ${T.freeHeads ? '' : 'disabled'}>−</button><button class="btn sm ghost" data-act="fdFree" data-n="1" aria-label="One more overnight guest" ${T.freeHeads < ih.adults + ih.children ? '' : 'disabled'}>+</button></span> · add visitors below · cottage at regular price</div></div><button class="btn sm ghost" data-act="fdInhouseOff">Not a room guest</button>`
         : `<span class="small muted grow">Day visitors pay here. Staying guests and walk-in room bookings start from the buttons.</span>${R.inhouse().length ? `<button class="btn sm ghost" data-act="fdInhouse">${R.icon('bed')}Overnight guest using a cottage</button>` : ''}${R.can('book') ? `<button class="btn sm ghost" data-act="newBooking" data-ch="Walk-in">${R.icon('plus')}Book an overnight room</button>` : ''}`}</div>`;
+      const promo = dps ? `<div class="promo-bar ${dps.pct < 0 ? 'down' : 'up'}"><span aria-hidden="true">${dps.pct < 0 ? '▼' : '▲'}</span><b>${esc(dps.name)}: ${dps.pct > 0 ? '+' : ''}${dps.pct}%</b> on entrance and cottages${dps.time ? ` until ${dps.time.to}` : ' today'}. Prices below already include it.</div>` : '';
       const strip = `<div class="pulse pulse5">
         <div><b>${heads}</b><span>Day guests today</span></div>
         <div><b>${free} of ${D.cottages.length}</b><span>Cottages free</span></div>
@@ -252,7 +256,7 @@
         const state = s ? 'taken' : picked ? 'picked' : vb ? 'reserved' : 'free';
         const label = s ? `${s.calc.heads} pax · since ${s.at}` : picked ? 'On this sale' : vb ? `Reserved · ${vb.eta}` : `Free · ${x.cap} pax`;
         return `<button class="cot ${state} ${x.kind === 'Pavilion' ? 'wide' : ''}" data-act="fdCottage" data-id="${x.id}" aria-pressed="${picked}" aria-label="${esc(x.name)}, ${label}">
-          <span class="roof" aria-hidden="true"></span><b>${esc(x.name.replace('Family cottage', 'Family'))}</b><small>${label}</small><em>${R.money(x.price)}</em></button>`;
+          <span class="roof" aria-hidden="true"></span><b>${esc(x.name.replace('Family cottage', 'Family'))}</b><small>${label}</small><em>${f !== 1 ? `<s>${R.money(x.price)}</s> ` : ''}${R.money(adj(x.price))}</em></button>`;
       }).join('')}</div>`;
       const extraCats = [...new Set(D.extras.map(x => x.cat))];
       const extras = `<div class="tabs tabs-sm">${extraCats.map(k => `<button class="${extraCat === k ? 'on' : ''}" data-act="fdExtraCat" data-c="${k}">${k}</button>`).join('')}</div>
@@ -288,7 +292,7 @@
         <div class="tbl"><table><thead><tr><th>Time</th><th>Receipt</th><th>Guest</th><th>Cottage</th><th>Paid by</th><th class="right">Total</th></tr></thead><tbody>
         ${todays.map(s => `<tr class="click" data-act="${s.or ? 'fdReceipt' : 'openRes'}" data-id="${s.or ? s.id : s.resId}"><td class="num">${s.at}</td><td>${s.or || '<span class="chip">Room bill</span>'}</td><td>${esc(s.name || 'Walk-in')}<div class="small muted">${s.calc.heads} pax</div></td><td class="small">${s.cottages.map(id => esc(D.cottages.find(x => x.id === id).name)).join(', ') || '—'}</td><td>${R.methodName(s.method)}</td><td class="right num"><b>${R.peso(s.calc.total)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="empty">No sales yet today</td></tr>'}
         </tbody></table></div></div>`;
-      return `${strip}${bar}<div class="grid g-till"><div class="stack">
+      return `${strip}${promo}${bar}<div class="grid g-till"><div class="stack">
           <div class="panel"><div class="ph"><h2>${ih ? 'Visitors with them (pay entrance)' : 'Guests'}</h2><div class="sp">${session}</div></div>${pax}</div>
           <div class="panel"><div class="ph"><h2>Cottages</h2><div class="sp small muted">Tap a free cottage to add it. Tap a rented one to see who has it.</div></div>${cottages}</div>
           <div class="panel"><h2>Rentals and fees</h2>${extras}</div>

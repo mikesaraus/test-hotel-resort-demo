@@ -20,6 +20,13 @@
     }
     if (S.modules.roster === undefined) S.modules.roster = false;
     if (S.rules.guestEntranceFree === undefined) S.rules.guestEntranceFree = true;
+    // older seasons: "MM-DD to MM-DD, weeknights" → the new format (Holy Week now follows Easter)
+    S.seasons.forEach(s => {
+      if (s.when) return;
+      s.when = /holy week/i.test(s.name) ? { type: 'easter', from: -3, to: 0 } : { type: 'yearly', from: s.from, to: s.to };
+      s.days = s.weekdays ? [0, 1, 2, 3, 4] : null; s.scope = /holy week|christmas/i.test(s.name) ? 'both' : 'rooms'; s.time = null; s.active = true;
+      delete s.from; delete s.to; delete s.weekdays; delete s.note;
+    });
     if (!S.vouchers) S.vouchers = [
       { code: 'CAMSAIR10', label: '10% off cottage', kind: 'pct', value: 10, active: true, uses: 0 },
       { code: 'REPEAT500', label: '₱500 off cottage (repeat guest)', kind: 'amt', value: 500, active: true, uses: 0 },
@@ -352,6 +359,7 @@
        ['Rosalie (manager)', 'Room status → Property map → Edit map: click a room to renumber it, change its type or price; + adds a room. Front desk shows tonight\'s prices straight away.'],
        ['Rodel (maintenance)', 'Tasks: the aircon in 205 is waiting on parts and overdue. Change a status from the list, or open a task to add an update.'],
        ['Teresa (owner)', 'Settings → Modules: switch on Staff roster (off for now).'],
+       ['Rosalie (manager)', 'Settings → Seasons: add a ready-made Philippine season (Holy Week follows Easter by itself), and see the 12-month price calendar.'],
        ['Joy (accountant)', 'View only: try to change anything.']].map(([w, t]) => `<div class="list-item"><span class="chip">${esc(w)}</span><div class="grow small">${esc(t)}</div></div>`).join('')}
     <p class="small muted" style="margin-top:10px">Mockup only: prices, rooms, staff and guests are sample data saved in this browser.</p>`);
 

@@ -469,6 +469,43 @@ button.rate-row:hover{background:#FAF5EC}
 .qs-item b{display:block}
 .qs-item small{display:block;color:var(--ink-3);font-size:13px}
 
+/* seasons */
+.season-list{display:flex;flex-direction:column}
+.season{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #EFE7DA;flex-wrap:wrap}
+.season:last-child{border-bottom:0}
+.season.off{opacity:.55}
+.season .grow{flex:1;min-width:220px}
+.season-sw{width:14px;height:36px;border-radius:4px;flex:none}
+.preset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
+.preset{display:flex;flex-direction:column;gap:4px;align-items:flex-start;text-align:left;background:#fff;border:1px solid #D6C8B3;border-radius:var(--r-m);padding:10px 12px;cursor:pointer;font:inherit;color:inherit}
+.preset:hover{border-color:var(--lagoon);box-shadow:var(--raise)}
+.preset small{font-size:12px;color:var(--ink-3)}
+.preset.blank{border-style:dashed}
+.when-box{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;background:var(--bg);border-radius:var(--r-m);padding:10px 12px}
+.when-box small{flex-basis:100%}
+.md-pick{display:inline-flex;gap:6px}
+.md-pick select{padding:8px;border:1px solid var(--line-strong);border-radius:var(--r-s);background:#fff;min-height:38px}
+fieldset.days{border:0;padding:0;margin:0;display:flex;flex-wrap:wrap;gap:6px}
+fieldset.days legend{margin-bottom:6px;padding:0}
+.day-chip input{position:absolute;opacity:0}
+.day-chip span{display:inline-block;min-width:48px;text-align:center;padding:6px 8px;border:1px solid #D6C8B3;border-radius:20px;font-weight:600;font-size:13px;cursor:pointer;background:#fff}
+.day-chip input:checked + span{background:var(--ink);border-color:var(--ink);color:#fff}
+.day-chip input:focus-visible + span{outline:3px solid var(--gold);outline-offset:2px}
+.time-box{display:flex;flex-direction:column;gap:6px}
+.season-cal{display:flex;flex-direction:column;gap:3px;overflow-x:auto}
+.cal-row{display:flex;align-items:center;gap:8px}
+.cal-m{width:52px;font-size:12px;color:var(--ink-3);flex:none}
+.cal-days{display:grid;grid-template-columns:repeat(31,minmax(12px,1fr));gap:2px;flex:1;min-width:420px}
+.cal-d{height:16px;border-radius:3px;background:#F3EDE3}
+.cal-d.wk{box-shadow:inset 0 -3px 0 rgba(43,27,24,.12)}
+.cal-d.none{background:transparent}
+.cal-d.today{outline:2px solid var(--ink);outline-offset:1px}
+.c-legend .lg-today{background:transparent;outline:2px solid var(--ink);outline-offset:-2px}
+.promo-bar{display:flex;align-items:center;gap:10px;border-radius:var(--r-m);padding:10px 14px;margin-bottom:12px;font-size:14px}
+.promo-bar.down{background:var(--palm-l);color:#203A27}
+.promo-bar.up{background:var(--sun-l);color:#5A3F0E}
+.cot em s{font-weight:400;color:var(--ink-3)}
+
 /* ---------- arrivals list ---------- */
 .arr-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .arr-head h3{font-family:var(--head);font-weight:400;font-size:22px}

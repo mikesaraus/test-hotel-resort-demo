@@ -18,13 +18,40 @@ window.R = window.R || {};
 
   // ---------- seasons & nightly prices ----------
   // A season matches by month-day (wraps over New Year). "weekdays" = Sunday to Thursday nights only.
-  R.seasonOn = function (date, S) {
-    S = S || R.S;
-    const md = date.slice(5), dow = new Date(date + 'T12:00:00').getDay();
-    return S.seasons.find(s => {
-      const inRange = s.from <= s.to ? md >= s.from && md <= s.to : md >= s.from || md <= s.to;
-      return inRange && (!s.weekdays || dow <= 4);
-    });
+  // ---------- seasons ----------
+  // A season says WHEN (every year, this year only, follows Easter, around the last Monday of a month),
+  // on WHICH days of the week, FOR what (room nights, Day pass, or late walk-in rooms) and, for Day pass
+  // and late walk-ins, optionally between which TIMES. The first matching season in the list wins.
+  const pad = n => String(n).padStart(2, '0');
+  R.easter = function (y) { // Gregorian Easter Sunday (anonymous algorithm)
+    const a = y % 19, b = Math.floor(y / 100), c = y % 100, d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    const h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    const mo = Math.floor((h + l - 7 * m + 114) / 31), da = ((h + l - 7 * m + 114) % 31) + 1;
+    return y + '-' + pad(mo) + '-' + pad(da);
+  };
+  const lastWeekday = (y, month, dow) => { const d = new Date(y, month, 0, 12); while (d.getDay() !== dow) d.setDate(d.getDate() - 1); return y + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  // the dates a season covers in a given year: [from, to] as YYYY-MM-DD, or null
+  R.seasonSpan = function (s, y) {
+    const w = s.when;
+    if (w.type === 'once') return w.from.slice(0, 4) <= y + '' && w.to.slice(0, 4) >= y + '' ? [w.from, w.to] : null;
+    if (w.type === 'easter') { const e = R.easter(y); return [addDays(e, w.from), addDays(e, w.to)]; }
+    if (w.type === 'lastMon') { const m = lastWeekday(y, w.month, 1); return [addDays(m, w.from), addDays(m, w.to)]; }
+    return null; // yearly is matched by month-day, so it can run over New Year
+  };
+  R.seasonCovers = function (s, date) {
+    const w = s.when;
+    if (w.type === 'yearly') { const md = date.slice(5); return w.from <= w.to ? md >= w.from && md <= w.to : md >= w.from || md <= w.to; }
+    const y = +date.slice(0, 4);
+    return [y - 1, y, y + 1].some(yy => { const sp = R.seasonSpan(s, yy); return sp && date >= sp[0] && date <= sp[1]; });
+  };
+  const inTime = (s, hhmm) => !s.time || (s.time.from <= s.time.to ? hhmm >= s.time.from && hhmm < s.time.to : hhmm >= s.time.from || hhmm < s.time.to);
+  // scope: 'rooms' (room nights, no time window), 'daypass' (entrance and cottages), 'walkin' (late walk-in rooms)
+  R.seasonOn = function (date, S, scope, hhmm) {
+    S = S || R.S; scope = scope || 'rooms';
+    const dow = new Date(date + 'T12:00:00').getDay();
+    return S.seasons.find(s => s.active !== false
+      && (scope === 'rooms' ? (s.scope === 'rooms' || s.scope === 'both') && !s.time : scope === 'daypass' ? s.scope === 'daypass' || s.scope === 'both' : s.scope === 'walkin')
+      && (!s.days || s.days.includes(dow)) && R.seasonCovers(s, date) && (scope === 'rooms' || inTime(s, hhmm || '12:00')));
   };
   R.priceOn = function (typeId, date, S) {
     S = S || R.S;
@@ -51,7 +78,8 @@ window.R = window.R || {};
     };
   };
   R.calcTicket = function (t, cat) {
-    const ent = cat.entrance[t.session], p = t.pax, sess = t.session === 'day' ? 'day tour' : 'night swim';
+    const f = t.factor || 1, adj = n => Math.round(n * f);
+    const ent = { adult: adj(cat.entrance[t.session].adult), child: adj(cat.entrance[t.session].child) }, p = t.pax, sess = t.session === 'day' ? 'day tour' : 'night swim';
     // overnight guests on a room booking get in free (entrance is part of the room rate); visitors pay
     const fh = t.freeHeads || 0;
     const heads = p.adult + p.child + p.senior + p.toddler + fh;
@@ -62,7 +90,7 @@ window.R = window.R || {};
     if (p.child) lines.push({ name: `Entrance, child 3–12 (${sess})`, qty: p.child, price: ent.child, share: 0 });
     if (p.senior) lines.push({ name: `Entrance, senior / PWD (${sess})`, qty: p.senior, price: ent.adult, share: 1 });
     if (p.toddler) lines.push({ name: 'Entrance, below 3 (free)', qty: p.toddler, price: 0, share: 0 });
-    t.cottages.forEach(id => { const c = cat.cottages.find(x => x.id === id); lines.push({ name: `${c.name} (${sess})`, qty: 1, price: c.price, share: sh, cot: true }); });
+    t.cottages.forEach(id => { const c = cat.cottages.find(x => x.id === id); lines.push({ name: `${c.name} (${sess})`, qty: 1, price: adj(c.price), share: sh, cot: true }); });
     t.items.forEach(({ id, qty }) => { const x = cat.extras.find(e => e.id === id); lines.push({ name: x.name, qty, price: x.price, share: x.shared ? sh : 0 }); });
     (t.custom || []).forEach(l => lines.push({ name: l.name, qty: l.qty, price: l.price, share: sh }));
     // voucher or approved discount: applies to the cottage price only
@@ -88,10 +116,12 @@ window.R = window.R || {};
       { id: 'BKD', name: 'Barkada Room', base: 6000, cap: 10, size: '48 m²', bed: '5 bunk beds', view: 'Near the pool' }
     ];
     const seasons = [
-      { id: 'SN1', name: 'Holy Week', from: '03-25', to: '03-28', pct: 30, weekdays: false, note: 'Dates change every year: set them each January' },
-      { id: 'SN2', name: 'Summer', from: '03-01', to: '05-31', pct: 20, weekdays: false, note: '' },
-      { id: 'SN3', name: 'Christmas season', from: '12-20', to: '01-02', pct: 20, weekdays: false, note: '' },
-      { id: 'SN4', name: 'Rainy season, weeknights', from: '06-01', to: '11-30', pct: -10, weekdays: true, note: 'Sunday to Thursday nights' }
+      { id: 'SN1', name: 'Holy Week', when: { type: 'easter', from: -3, to: 0 }, pct: 30, days: null, scope: 'both', time: null, active: true },
+      { id: 'SN2', name: 'Summer', when: { type: 'yearly', from: '03-01', to: '05-31' }, pct: 20, days: null, scope: 'rooms', time: null, active: true },
+      { id: 'SN3', name: 'Christmas season', when: { type: 'yearly', from: '12-20', to: '01-02' }, pct: 20, days: null, scope: 'both', time: null, active: true },
+      { id: 'SN4', name: 'Rainy season, weeknights', when: { type: 'yearly', from: '06-01', to: '11-30' }, pct: -10, days: [0, 1, 2, 3, 4], scope: 'rooms', time: null, active: true },
+      { id: 'SN5', name: 'Weekday afternoon promo', when: { type: 'yearly', from: '01-01', to: '12-31' }, pct: -20, days: [1, 2, 3, 4], scope: 'daypass', time: { from: '14:00', to: '17:00' }, active: true },
+      { id: 'SN6', name: 'Late walk-in room rate', when: { type: 'yearly', from: '01-01', to: '12-31' }, pct: -25, days: null, scope: 'walkin', time: { from: '22:00', to: '04:00' }, active: false }
     ];
     const P = { roomTypes, seasons };
     const sources = [

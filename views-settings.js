@@ -7,22 +7,6 @@
   const guard = p => R.need(p);
 
   // ---------- edits ----------
-  R.act.setSeason = (d, el) => {
-    if (!guard('settings')) return R.render();
-    const s = R.S.seasons.find(x => x.id === d.id);
-    if (d.f === 'pct') s.pct = Math.round(+el.value) || 0;
-    else if (d.f === 'weekdays') s.weekdays = el.checked;
-    else if (d.f === 'from' || d.f === 'to') { if (!/^\d{2}-\d{2}$/.test(el.value)) { R.toast('Use month-day, like 12-20', 'warn'); return R.render(); } s[d.f] = el.value; }
-    else s[d.f] = el.value;
-    R.log('Season changed', `${s.name}: ${d.f} = ${d.f === 'weekdays' ? el.checked : el.value}`);
-    R.rerender();
-  };
-  R.act.addSeason = () => { if (!guard('settings')) return; R.S.seasons.push({ id: R.nextId('SN'), name: 'New season', from: '01-01', to: '01-07', pct: 10, weekdays: false, note: '' }); R.log('Season added', ''); R.rerender(); };
-  R.act.delSeason = d => {
-    if (!guard('settings')) return;
-    const s = R.S.seasons.find(x => x.id === d.id);
-    R.confirm('Delete season?', `"${esc(s.name)}" will stop applying to new bookings. Existing bookings keep their prices.`, 'Delete', () => { R.S.seasons = R.S.seasons.filter(x => x !== s); R.log('Season deleted', s.name); R.rerender(); }, true);
-  };
   R.act.setRule = (d, el) => { if (!guard('settings')) return R.render(); R.S.rules[d.k] = d.k === 'deposit' ? Math.max(0, Math.min(100, +el.value || 0)) : el.value; R.log('House rule', `${d.k} = ${el.value}`); R.rerender(); R.toast('Saved'); };
   R.act.setGuestFree = (d, el) => { if (!guard('settings')) return R.render(); R.S.rules.guestEntranceFree = el.checked; R.log('House rule', `Entrance free for overnight guests: ${el.checked ? 'yes' : 'no'}`); R.rerender(); R.toast('Saved'); };
   R.act.setVoucher = (d, el) => {
@@ -279,18 +263,159 @@
           <p class="small muted" style="margin-top:8px">Seniors and PWDs pay the adult price less their discount. Below 3 is free. Rentals and fees can be added to the price list in the real build.</p></div></div>`;
   }
 
+  // ---------- seasons ----------
+  const pad = n => String(n).padStart(2, "0");
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const SCOPES = { rooms: 'Room nights', both: 'Room nights and Day pass', daypass: 'Day pass (entrance and cottages)', walkin: 'Late walk-in rooms' };
+  const EASTER = [[-3, 0, 'Maundy Thursday to Easter Sunday'], [-7, 0, 'Palm Sunday to Easter Sunday'], [-4, 1, 'Holy Wednesday to Easter Monday']];
+  const SEASON_COLORS = ['#7A1F24', '#D3922F', '#24707C', '#8A5FB8', '#2F5D7C', '#3D7348', '#B58539', '#74605A'];
+  const md = s => { const [m, d] = s.split('-'); return MONTHS[+m - 1] + ' ' + +d; };
+  const pretty = d => new Date(d + 'T12:00:00').toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' });
+  // plain-words summary of when a season applies
+  R.seasonWhen = s => {
+    const w = s.when, y = +R.bd().slice(0, 4);
+    let t = w.type === 'yearly' ? `Every year, ${md(w.from)} → ${md(w.to)}` : w.type === 'once' ? `This year only, ${pretty(w.from)} → ${pretty(w.to)}`
+      : w.type === 'easter' ? `${(EASTER.find(e => e[0] === w.from && e[1] === w.to) || [, , 'Around Easter'])[2]} (follows Easter)` : `Weekend of the last Monday of ${MONTHS[w.month - 1]}`;
+    if (w.type === 'easter' || w.type === 'lastMon') { const sp = R.seasonSpan(s, R.seasonSpan(s, y) && R.seasonSpan(s, y)[1] >= R.bd() ? y : y + 1); t += ` · next: ${R.fmtShort(sp[0])} → ${R.fmtShort(sp[1])} ${sp[0].slice(0, 4)}`; }
+    if (s.days && s.days.length < 7) t += ` · ${s.days.length === 5 && [0, 1, 2, 3, 4].every(x => s.days.includes(x)) ? 'Sun–Thu' : s.days.map(x => DOW[x]).join(', ')}${s.scope === 'rooms' || s.scope === 'both' ? ' nights' : ''}`;
+    if (s.time) t += ` · ${s.time.from}–${s.time.to}`;
+    return t;
+  };
+  const PRESETS = () => {
+    const y = +R.bd().slice(0, 4);
+    return [
+      ['New Year', { when: { type: 'yearly', from: '12-31', to: '01-01' }, pct: 25, scope: 'both' }],
+      ['Holy Week', { when: { type: 'easter', from: -3, to: 0 }, pct: 30, scope: 'both' }],
+      ['Summer', { when: { type: 'yearly', from: '03-01', to: '05-31' }, pct: 20, scope: 'rooms' }],
+      ['Independence Day', { when: { type: 'yearly', from: '06-11', to: '06-12' }, pct: 15, scope: 'both' }],
+      ['National Heroes Day weekend', { when: { type: 'lastMon', month: 8, from: -2, to: 0 }, pct: 15, scope: 'both' }],
+      ["All Saints' (Undas)", { when: { type: 'yearly', from: '10-31', to: '11-02' }, pct: 15, scope: 'both' }],
+      ['Christmas season', { when: { type: 'yearly', from: '12-20', to: '01-02' }, pct: 20, scope: 'both' }],
+      ['Initao town fiesta', { when: { type: 'once', from: `${y}-12-01`, to: `${y}-12-01` }, pct: 20, scope: 'both', hint: 'Set the fiesta date' }],
+      ['Weekday afternoon promo', { when: { type: 'yearly', from: '01-01', to: '12-31' }, pct: -20, scope: 'daypass', days: [1, 2, 3, 4], time: { from: '14:00', to: '17:00' } }],
+      ['Late walk-in room rate', { when: { type: 'yearly', from: '01-01', to: '12-31' }, pct: -25, scope: 'walkin', time: { from: '22:00', to: '04:00' } }],
+      ['Rainy season weeknights', { when: { type: 'yearly', from: '06-01', to: '11-30' }, pct: -10, scope: 'rooms', days: [0, 1, 2, 3, 4] }]
+    ];
+  };
+
+  R.act.addSeason = () => {
+    if (!guard('settings')) return;
+    R.modal('Add a season', `<p class="small muted" style="margin-bottom:10px">Pick a ready-made Philippine season and adjust it, or start from scratch.</p>
+      <div class="preset-grid">${PRESETS().map(([n, p], i) => `<button class="preset" data-preset="${i}"><b>${esc(n)}</b><small>${esc(R.seasonWhen(Object.assign({ name: n, days: null, time: null }, p)).split(' · next')[0])}</small><span class="chip ${p.pct > 0 ? 'amber' : 'green'}">${p.pct > 0 ? '+' : ''}${p.pct}%</span></button>`).join('')}
+        <button class="preset blank" data-preset="-1"><b>Start from scratch</b><small>Your own dates, days and times</small></button></div>`, b => {
+      b.addEventListener('click', e => {
+        const x = e.target.closest('[data-preset]'); if (!x) return;
+        const i = +x.dataset.preset, [n, p] = i >= 0 ? PRESETS()[i] : ['New season', { when: { type: 'yearly', from: R.bd().slice(5), to: R.bd().slice(5) }, pct: 10, scope: 'rooms' }];
+        R.seasonEditor(Object.assign({ id: '', name: n, days: null, time: null, active: true }, JSON.parse(JSON.stringify(p))));
+      });
+    });
+  };
+  R.act.editSeason = d => { if (!guard('settings')) return; R.seasonEditor(JSON.parse(JSON.stringify(R.S.seasons.find(x => x.id === d.id)))); };
+  R.seasonEditor = function (s) {
+    const isNew = !s.id, w = s.when, y = +R.bd().slice(0, 4);
+    const mdPick = (id, v) => { const [m, dd] = (v || '01-01').split('-'); return `<span class="md-pick"><select id="${id}M" aria-label="Month">${MONTHS.map((x, i) => `<option value="${pad(i + 1)}" ${+m === i + 1 ? 'selected' : ''}>${x}</option>`).join('')}</select><select id="${id}D" aria-label="Day">${Array.from({ length: 31 }, (_, i) => `<option value="${pad(i + 1)}" ${+dd === i + 1 ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></span>`; };
+    R.modal(isNew ? 'New season' : 'Edit season', `<div class="form">
+      <label class="field full">Name<input id="seN" value="${esc(s.name)}"></label>
+      <label class="field">Applies to<select id="seS">${Object.entries(SCOPES).map(([k, l]) => `<option value="${k}" ${k === s.scope ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="field">Price change (%)<input id="seP" type="number" min="-90" max="300" value="${s.pct}"><small class="muted" style="font-weight:400">+ raises, − lowers the price</small></label>
+      <label class="field full">When<select id="seW">
+        <option value="yearly" ${w.type === 'yearly' ? 'selected' : ''}>Every year, same dates</option>
+        <option value="once" ${w.type === 'once' ? 'selected' : ''}>This year only (exact dates)</option>
+        <option value="easter" ${w.type === 'easter' ? 'selected' : ''}>Follows Easter (moves every year)</option>
+        <option value="lastMon" ${w.type === 'lastMon' ? 'selected' : ''}>Weekend of the last Monday of a month</option></select></label>
+      <div class="full when-box" data-w="yearly"><span class="field">From</span>${mdPick('seF', w.type === 'yearly' ? w.from : R.bd().slice(5))}<span class="field">to</span>${mdPick('seT', w.type === 'yearly' ? w.to : R.bd().slice(5))}<small class="muted">Can run over New Year, e.g. Dec 20 → Jan 2.</small></div>
+      <div class="full when-box" data-w="once"><label class="field">From<input id="seOF" type="date" value="${w.type === 'once' ? w.from : R.bd()}"></label><label class="field">To<input id="seOT" type="date" value="${w.type === 'once' ? w.to : R.bd()}"></label></div>
+      <div class="full when-box" data-w="easter"><label class="field">Which days<select id="seE">${EASTER.map(([a, b2, l], i) => `<option value="${i}" ${w.type === 'easter' && w.from === a && w.to === b2 ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <small class="muted">${[y, y + 1, y + 2].map(yy => `Easter ${yy}: ${R.fmtShort(R.easter(yy))}`).join(' · ')}</small></div>
+      <div class="full when-box" data-w="lastMon"><label class="field">Month<select id="seLM">${MONTHS.map((x, i) => `<option value="${i + 1}" ${w.type === 'lastMon' && w.month === i + 1 ? 'selected' : i === 7 && w.type !== 'lastMon' ? 'selected' : ''}>${x}</option>`).join('')}</select></label><small class="muted">Saturday to the last Monday, e.g. National Heroes Day.</small></div>
+      <fieldset class="full days"><legend class="field">Days of the week <small class="muted" style="font-weight:400" id="seDH"></small></legend>${DOW.map((x, i) => `<label class="day-chip"><input type="checkbox" value="${i}" ${!s.days || s.days.includes(i) ? 'checked' : ''}><span>${x}</span></label>`).join('')}</fieldset>
+      <div class="full time-box"><label class="check"><input type="checkbox" id="seTm" ${s.time ? 'checked' : ''}> Only between set times</label>
+        <span class="row" id="seTW"><input type="time" id="seT1" value="${s.time ? s.time.from : '14:00'}" class="search" aria-label="From time"> to <input type="time" id="seT2" value="${s.time ? s.time.to : '17:00'}" class="search" aria-label="To time"></span>
+        <small class="muted" id="seTH"></small></div>
+      <label class="full check"><input type="checkbox" id="seA" ${s.active !== false ? 'checked' : ''}> Active</label>
+      <div class="full" id="seSum"></div></div>
+      <p class="small warn-text" id="seErr" style="min-height:1.4em;margin-top:6px"></p>
+      <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="seGo">${isNew ? 'Add season' : 'Save'}</button></div>`, b => {
+      const $ = q => b.querySelector(q);
+      const read = () => {
+        const t = $('#seW').value, sc = $('#seS').value;
+        const when = t === 'yearly' ? { type: t, from: $('#seFM').value + '-' + $('#seFD').value, to: $('#seTM').value + '-' + $('#seTD').value }
+          : t === 'once' ? { type: t, from: $('#seOF').value, to: $('#seOT').value }
+          : t === 'easter' ? { type: t, from: EASTER[+$('#seE').value][0], to: EASTER[+$('#seE').value][1] } : { type: t, month: +$('#seLM').value, from: -2, to: 0 };
+        const days = [...b.querySelectorAll('.days input:checked')].map(x => +x.value);
+        return { id: s.id, name: $('#seN').value.trim(), scope: sc, pct: Math.round(+$('#seP').value), when, days: days.length === 7 ? null : days,
+          time: sc !== 'rooms' && $('#seTm').checked ? { from: $('#seT1').value, to: $('#seT2').value } : null, active: $('#seA').checked };
+      };
+      const upd = () => {
+        const v = read();
+        b.querySelectorAll('.when-box').forEach(x => { x.hidden = x.dataset.w !== v.when.type; });
+        // time windows only make sense for Day pass and late walk-ins; room nights are priced per night
+        const timeOk = v.scope !== 'rooms';
+        $('.time-box').hidden = !timeOk;
+        $('#seTW').style.visibility = $('#seTm').checked ? 'visible' : 'hidden';
+        $('#seTH').textContent = v.scope === 'walkin' ? 'A walk-in room booked for tonight between these times gets this price for the first night.' : v.scope === 'both' ? 'With a time set, this season applies to the Day pass only.' : 'Entrance and cottage prices change between these times.';
+        $('#seDH').textContent = v.scope === 'rooms' || v.scope === 'both' ? '(for room nights: the night that starts that day)' : '';
+        $('#seSum').innerHTML = `<div class="note">${R.icon('calendar')}<div><b>${esc(v.name || 'This season')}: ${v.pct > 0 ? '+' : ''}${v.pct || 0}%</b> on ${SCOPES[v.scope].toLowerCase()}<br>${esc(R.seasonWhen(v))}</div></div>`;
+      };
+      b.querySelectorAll('input,select').forEach(x => { x.addEventListener('input', upd); x.addEventListener('change', upd); });
+      upd();
+      $('#seGo').onclick = () => {
+        const v = read(), err = m => { $('#seErr').textContent = m; };
+        if (v.name.length < 3) return err('Enter a name.');
+        if (!v.pct || v.pct < -90 || v.pct > 300) return err('Enter a price change between −90% and +300% (not 0).');
+        if (v.when.type === 'once' && (!v.when.from || !v.when.to || v.when.to < v.when.from)) return err('The end date must be on or after the start date.');
+        if (v.days && !v.days.length) return err('Pick at least one day of the week.');
+        if (v.time && v.time.from === v.time.to) return err('The start and end times are the same.');
+        if (v.scope === 'walkin' && !v.time) return err('A late walk-in rate needs times, e.g. 22:00 to 04:00.');
+        if (isNew) { v.id = R.nextId('SN'); R.S.seasons.push(v); } else Object.assign(R.S.seasons.find(x => x.id === v.id), v);
+        R.log(isNew ? 'Season added' : 'Season changed', `${v.name}: ${v.pct > 0 ? '+' : ''}${v.pct}% · ${R.seasonWhen(v)}`);
+        R.closeModal(); R.rerender(); R.toast(isNew ? `${v.name} added` : 'Saved');
+      };
+    }, { wide: true });
+  };
+  R.act.moveSeason = d => {
+    if (!guard('settings')) return;
+    const L = R.S.seasons, i = L.findIndex(x => x.id === d.id), j = i + +d.n;
+    if (j < 0 || j >= L.length) return;
+    [L[i], L[j]] = [L[j], L[i]]; R.log('Season order', `${L[j].name} moved ${+d.n < 0 ? 'up' : 'down'}`); R.rerender();
+  };
+  R.act.toggleSeason = (d, el) => { if (!guard('settings')) return R.render(); const s = R.S.seasons.find(x => x.id === d.id); s.active = el.checked; R.log('Season', `${s.name} ${s.active ? 'on' : 'off'}`); R.rerender(); };
+  R.act.delSeason = d => {
+    if (!guard('settings')) return;
+    const s = R.S.seasons.find(x => x.id === d.id);
+    R.confirm('Delete season?', `"${esc(s.name)}" will stop applying to new bookings and sales. Existing bookings keep their prices.`, 'Delete', () => { R.S.seasons = R.S.seasons.filter(x => x !== s); R.log('Season deleted', s.name); R.rerender(); }, true);
+  };
+
   function seasons(can) {
-    const dis = can ? '' : 'disabled';
-    return `<div class="panel"><div class="ph"><h2>Seasons</h2><div class="sp">${can ? '<button class="btn sm" data-act="addSeason">Add season</button>' : ''}</div></div>
-      <p class="small muted" style="margin-bottom:8px">Raise or lower the base rate for set dates. Dates are month-day and can run over New Year (12-20 to 01-02). The first matching season in the list wins.</p>
-      <div class="tbl"><table><thead><tr><th>Name</th><th>From</th><th>To</th><th>Change %</th><th>Weeknights only</th><th></th></tr></thead><tbody>
-      ${R.S.seasons.map(s => `<tr><td><input class="search" value="${esc(s.name)}" data-change="setSeason" data-id="${s.id}" data-f="name" ${dis} aria-label="Season name">${s.note ? `<div class="small muted">${esc(s.note)}</div>` : ''}</td>
-        <td><input class="search" style="width:80px" value="${s.from}" data-change="setSeason" data-id="${s.id}" data-f="from" ${dis} aria-label="From (MM-DD)"></td>
-        <td><input class="search" style="width:80px" value="${s.to}" data-change="setSeason" data-id="${s.id}" data-f="to" ${dis} aria-label="To (MM-DD)"></td>
-        <td><input class="search" type="number" style="width:80px" value="${s.pct}" data-change="setSeason" data-id="${s.id}" data-f="pct" ${dis} aria-label="Change percent"></td>
-        <td><input type="checkbox" ${s.weekdays ? 'checked' : ''} data-change="setSeason" data-id="${s.id}" data-f="weekdays" ${dis} aria-label="Sunday to Thursday nights only"></td>
-        <td class="right">${can ? `<button class="btn sm ghost" data-act="delSeason" data-id="${s.id}">Delete</button>` : ''}</td></tr>`).join('')}</tbody></table></div></div>`;
+    const L = R.S.seasons, day = R.bd();
+    const col = s => SEASON_COLORS[L.filter(x => x.scope === 'rooms' || x.scope === 'both').indexOf(s)] || '#9E968C';
+    // 12-month preview of room-night pricing: which season wins each night
+    const start = day.slice(0, 8) + '01', months = Array.from({ length: 12 }, (_, i) => { const d = new Date(start + 'T12:00:00'); d.setMonth(d.getMonth() + i); return R.util.iso(d).slice(0, 7); });
+    const cal = months.map(m => {
+      const n = new Date(+m.slice(0, 4), +m.slice(5), 0).getDate();
+      return `<div class="cal-row"><span class="cal-m">${MONTHS[+m.slice(5) - 1]} ${m.slice(2, 4)}</span><div class="cal-days">${Array.from({ length: 31 }, (_, i) => {
+        if (i >= n) return '<i class="cal-d none"></i>';
+        const d = m + '-' + pad(i + 1), s = R.seasonOn(d), dow = new Date(d + 'T12:00:00').getDay();
+        return `<i class="cal-d ${d === day ? 'today' : ''} ${dow === 0 || dow === 6 ? 'wk' : ''}" ${s ? `style="background:${col(s)}"` : ''} title="${esc(R.fmt(d))}: ${s ? esc(s.name) + ' ' + (s.pct > 0 ? '+' : '') + s.pct + '%' : 'base rate'}"></i>`;
+      }).join('')}</div></div>`;
+    }).join('');
+    const roomSeasons = L.filter(x => (x.scope === 'rooms' || x.scope === 'both') && !x.time);
+    return `<div class="panel" style="margin-bottom:16px"><div class="ph"><h2>Seasons and promos</h2><div class="sp">${can ? `<button class="btn sm" data-act="addSeason">${R.icon('plus')}Add season</button>` : ''}</div></div>
+        <p class="small muted" style="margin-bottom:10px">Each season raises or lowers prices for set dates, days and times. When two match, the one higher in the list wins: use ↑ ↓ to change the order. Existing bookings keep their prices.</p>
+        <div class="season-list">${L.map((s, i) => `<div class="season ${s.active === false ? 'off' : ''}">
+          <span class="season-sw" style="background:${s.scope === 'rooms' || s.scope === 'both' ? col(s) : 'transparent'};${s.scope === 'rooms' || s.scope === 'both' ? '' : 'border:2px dashed #C9BBA6'}" aria-hidden="true"></span>
+          <div class="grow"><div class="row"><b>${esc(s.name)}</b><span class="chip ${s.pct > 0 ? 'amber' : 'green'}">${s.pct > 0 ? '+' : ''}${s.pct}%</span><span class="chip">${esc(SCOPES[s.scope])}</span>${s.active === false ? '<span class="chip">Off</span>' : ''}</div>
+            <div class="small muted">${esc(R.seasonWhen(s))}</div></div>
+          ${can ? `<label class="check small"><input type="checkbox" ${s.active !== false ? 'checked' : ''} data-change="toggleSeason" data-id="${s.id}" aria-label="${esc(s.name)} active"> On</label>
+            <span class="row"><button class="tool" data-act="moveSeason" data-id="${s.id}" data-n="-1" ${i ? '' : 'disabled'} aria-label="Move ${esc(s.name)} up">↑</button><button class="tool" data-act="moveSeason" data-id="${s.id}" data-n="1" ${i < L.length - 1 ? '' : 'disabled'} aria-label="Move ${esc(s.name)} down">↓</button>
+            <button class="btn sm ghost" data-act="editSeason" data-id="${s.id}">Edit</button><button class="btn sm ghost warn-text" data-act="delSeason" data-id="${s.id}" aria-label="Delete ${esc(s.name)}">Delete</button></span>` : ''}</div>`).join('') || '<p class="empty">No seasons: every night sells at the base rate.</p>'}</div></div>
+      <div class="panel"><div class="ph"><h2>Room prices, next 12 months</h2><span class="small muted">Each square is a night. Hover to see the season.</span></div>
+        <div class="c-legend">${roomSeasons.map(s => `<span><i style="background:${col(s)}"></i>${esc(s.name)} ${s.pct > 0 ? '+' : ''}${s.pct}%</span>`).join('')}<span><i style="background:#F3EDE3;box-shadow:inset 0 0 0 1px #E4D9C8"></i>Base rate</span><span><i class="lg-today"></i>Today</span></div>
+        <div class="season-cal">${cal}</div>
+        <p class="small muted" style="margin-top:8px">Day pass promos and late walk-in rates depend on the time of day, so they aren't shown here.</p></div>`;
   }
+
   function rules(can) {
     const r = R.S.rules, f = (k, l, type) => `<label class="field ${type === 'long' ? 'full' : ''}">${l}<input ${type === 'num' ? 'type="number" min="0" max="100"' : ''} value="${esc(r[k])}" data-change="setRule" data-k="${k}" ${can ? '' : 'disabled'}></label>`;
     return `<div class="panel"><h2>House rules</h2><div class="form">${f('checkin', 'Check-in time')}${f('checkout', 'Check-out time')}${f('deposit', 'Deposit to confirm (%)', 'num')}<div></div>${f('cancellation', 'Cancellation policy', 'long')}${f('noshow', 'No-show policy', 'long')}</div>

@@ -393,7 +393,9 @@
         const dups = found() || nm.length < 3 ? [] : R.S.guests.filter(g => g.name.toLowerCase() === nm || g.name.toLowerCase().startsWith(nm + ' ') || (ph.length >= 7 && g.phone.replace(/\D/g, '').endsWith(ph.slice(-7)))).slice(0, 3);
         $('#nbDup').innerHTML = dups.length ? `<div class="note warn">${R.icon('users')}<div><b>Already a guest?</b> Use the existing profile so their history stays in one place.<div class="row" style="margin-top:6px">${dups.map(g => `<button class="btn sm ghost" data-pick="${esc(g.name)} — ${g.id}">${esc(g.name)} · ${esc(g.phone)}</button>`).join('')}</div></div></div>` : '';
         const t = R.type($('#nbType').value), n = Math.max(1, +$('#nbN').value || 1), a = $('#nbArr').value;
-        const rates = R.quote(t.id, a, n), sum = rates.reduce((x, y) => x + y, 0), left = R.typeAvail(t.id, a, n);
+        const rates = R.quote(t.id, a, n), late = $('#nbCh').value === 'Walk-in' && a === bd() && R.seasonOn(bd(), null, 'walkin', R.now());
+        if (late) rates[0] = Math.round(rates[0] * (1 + late.pct / 100) / 50) * 50;
+        const sum = rates.reduce((x, y) => x + y, 0), left = R.typeAvail(t.id, a, n);
         const ppl = +$('#nbA').value + +$('#nbC').value, seasons = [...new Set(rates.map((_, i) => (R.seasonOn(addDays(a, i)) || {}).name).filter(Boolean))];
         const key = t.id + a + n;
         if (key !== lastKey) {
@@ -405,12 +407,12 @@
         const over = +$('#nbRate').value > 0 && +$('#nbRate').value * n < sum;
         const total = +$('#nbRate').value > 0 ? +$('#nbRate').value * n : sum;
         $('#nbQuote').innerHTML = `<div class="note ${left ? '' : 'warn'}"><div class="row"><b>${left ? `${left} free` : 'Sold out'}</b> <span class="muted">${R.fmt(a)} → ${R.fmt(addDays(a, n))}</span><span style="margin-left:auto" class="num"><b>${R.money(total)}</b> total</span></div>
-          <div class="small muted">${rates.map(R.money).join(' + ')}${seasons.length ? ' · ' + seasons.map(esc).join(', ') + ' pricing' : ''}${$('#nbCh').value.match(/Agoda|Booking/) ? ` · ${R.sourceFee($('#nbCh').value)}% commission` : ` · ${R.S.rules.deposit}% deposit to confirm: ${R.money(total * R.S.rules.deposit / 100)}`}</div>
+          <div class="small muted">${rates.map(R.money).join(' + ')}${seasons.length ? ' · ' + seasons.map(esc).join(', ') + ' pricing' : ''}${late ? ` · <b>${esc(late.name)} ${late.pct}% tonight</b>` : ''}${$('#nbCh').value.match(/Agoda|Booking/) ? ` · ${R.sourceFee($('#nbCh').value)}% commission` : ` · ${R.S.rules.deposit}% deposit to confirm: ${R.money(total * R.S.rules.deposit / 100)}`}</div>
           ${ppl > t.cap ? `<div class="small warn-text">${ppl} guests, but this room sleeps ${t.cap}. Choose a bigger room type, or write why it's OK below.</div>` : ''}
           ${over ? `<div class="small">Below the season price: ${R.can('rate') ? 'you can approve this.' : 'a supervisor will approve with their PIN.'}</div>` : ''}</div>`;
         $('#nbOverW').hidden = ppl <= t.cap;
         $('#nbGo').disabled = !left;
-        return { t, n, a, rates, over, ppl };
+        return { t, n, a, rates, over, ppl, late };
       };
       b.querySelectorAll('input,select').forEach(i => i.addEventListener('input', quote));
       quote();

@@ -15,6 +15,7 @@ This file lists what the real build still needs.
 | Cashier | Shifts, cash count, X / Z reading, receipt register in number order |
 | Rooms | Property map and housekeeping board (occupied / vacant kept apart from dirty / clean / inspected), out of order, Undo for quick mistakes. Managers edit buildings, map layout, rooms, room types, cottages and entrance fees in Settings |
 | Tasks | Guest requests and repairs with any status change, waiting-on-parts with an expected date, overdue flags, history and updates |
+| Seasons | Every year / this year only / follows Easter / weekend of the last Monday; days of the week; room nights, Day pass, or late walk-in rooms; optional time window; Philippine presets; 12-month calendar |
 | Management | Night audit and business date, reports (business health, daily manager report, revenue, day tour, operations), settings, roles and permissions, audit log. Staff roster is built but switched off (Settings → Modules) |
 | Add-ons | Restaurant & bar point of sale, activities & spa, guest app (switch on in Settings → Modules) |
 
