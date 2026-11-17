@@ -733,13 +733,13 @@
       }
       const v = x.v, c = R.venue(v.venue), bal = Math.max(0, v.price - R.vPaid(v));
       const notes = [v.catering ? `${v.catering.name} × ${v.pax}` : '', v.notes, v.overNote ? 'Over capacity: ' + v.overNote : ''].filter(Boolean).join(' · ');
-      return `<li class="arr-row cot-row ${v.status === 'arrived' ? 'is-done' : ''}">
+      return `<li class="arr-row arr-cot ${v.status === 'arrived' ? 'is-done' : ''}">
         <span class="arr-tick print-only" aria-hidden="true"></span>
         <div class="arr-time"><b class="num">${esc(v.eta)}</b><small>ETA</small></div>
         <div class="arr-main"><div class="arr-name"><b>${esc(v.name)}</b><span class="chip teal">${v.session === 'day' ? 'Day tour' : 'Night swim'}</span>${v.resId ? '<span class="chip ink">Room guest</span>' : ''}</div>
           <div class="arr-meta">${v.pax} guests · ${esc(v.phone)}</div>
           ${notes ? `<div class="arr-note">${R.icon('alert')}<span>${esc(notes)}</span></div>` : ''}</div>
-        <div class="arr-room"><b>${esc(c.name.replace('Family cottage', 'Family'))}</b><span class="rdy ${v.status === 'arrived' ? 'done' : 'cot'}"><i aria-hidden="true">${v.status === 'arrived' ? '✓' : '⌂'}</i>${v.status === 'arrived' ? 'Arrived' : 'Reserved'}</span></div>
+        <div class="arr-room"><b>${esc(c.name.replace('Family cottage', 'Family'))}</b><span class="rdy ${v.status === 'arrived' ? 'done' : 'resv'}"><i aria-hidden="true">${v.status === 'arrived' ? '✓' : '⌂'}</i>${v.status === 'arrived' ? 'Arrived' : 'Reserved'}</span></div>
         <div class="arr-money num">${v.status === 'arrived' ? '<span class="muted">—</span>' : bal > 0 ? `<b>${R.money(bal)}</b><small>+ entrance</small>` : '<span class="paid">Paid</span>'}</div>
         <div class="arr-act no-print"><button class="btn sm ghost" data-act="arrOpen" data-kind="ev" data-id="${v.id}" aria-label="Open reservation of ${esc(v.name)}">Open</button></div></li>`;
     };

@@ -466,7 +466,7 @@ tr.late td:first-child{box-shadow:inset 3px 0 0 var(--hibiscus)}
 .rdy.warn{color:#6E4F14}.rdy.warn i{background:var(--sun)}
 .rdy.bad{color:#8C1D17}.rdy.bad i{background:var(--hibiscus)}
 .rdy.done{color:var(--ink-3)}.rdy.done i{background:var(--ink-3)}
-.rdy.cot{color:#1E5560}.rdy.cot i{background:#24707C}
+.rdy.resv{color:#1E5560}.rdy.resv i{background:#24707C}
 .arr-money{text-align:right}
 .arr-money b{font-size:15px}
 .arr-money .paid{font-size:13px;font-weight:600;color:var(--palm)}
