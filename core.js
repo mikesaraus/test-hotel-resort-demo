@@ -19,6 +19,11 @@
       S.zones.splice(S.zones.findIndex(z => z.id === 'family') + 1, 0, { id: 'Z-pool', name: 'Swimming pool', kind: 'feature', style: 'pool', span: 6 });
     }
     if (S.modules.roster === undefined) S.modules.roster = false;
+    if (S.rules.guestEntranceFree === undefined) S.rules.guestEntranceFree = true;
+    if (!S.vouchers) S.vouchers = [
+      { code: 'CAMSAIR10', label: '10% off cottage', kind: 'pct', value: 10, active: true, uses: 0 },
+      { code: 'REPEAT500', label: '₱500 off cottage (repeat guest)', kind: 'amt', value: 500, active: true, uses: 0 },
+      { code: 'FREEKUBO', label: 'Free kubo (promo)', kind: 'pct', value: 100, active: false, uses: 0 }];
     S.tasks.forEach(t => { if (!t.history) t.history = []; if (!t.since) t.since = t.created; });
     const wait = S.tasks.find(t => t.id === 'T301');
     if (wait && wait.status === 'waiting' && !wait.expected) Object.assign(wait, { expected: R.util.addDays(S.bd, -1), waitNote: 'Compressor part ordered from CDO supplier', since: R.util.addDays(S.bd, -2) });
@@ -175,10 +180,12 @@
 
   // ---------- navigation ----------
   const NAV = [
-    { grp: 'Front office', items: [['desk', 'desk', 'Front desk'], ['reservations', 'book', 'Reservations'], ['guests', 'users', 'Guests'], ['calendar', 'calendar', 'Room calendar'], ['events', 'flag', 'Cottage reservations'], ['till', 'ticket', 'Walk-ins'], ['cashier', 'cash', 'Cashier']] },
-    { grp: 'Rooms', items: [['rooms', 'bed', 'Rooms'], ['tasks', 'check', 'Tasks']] },
-    { grp: 'Add-ons', items: [['fnb', 'cup', 'Restaurant & bar'], ['activities', 'sun', 'Activities & spa'], ['guestapp', 'phone', 'Guest app']] },
-    { grp: 'Management', items: [['audit', 'moon', 'Night audit'], ['reports', 'chart', 'Reports'], ['roster', 'clock', 'Staff roster'], ['settings', 'gear', 'Settings']] }
+    { grp: 'Rooms', items: [['desk', 'desk', 'Front desk'], ['reservations', 'book', 'Reservations'], ['calendar', 'calendar', 'Room calendar'], ['guests', 'users', 'Guests']] },
+    { grp: 'Day tour', items: [['till', 'ticket', 'Day pass'], ['events', 'flag', 'Cottage reservations']] },
+    { grp: 'Cash & closing', items: [['cashier', 'cash', 'Cashier'], ['audit', 'moon', 'Night audit']] },
+    { grp: 'Housekeeping', items: [['rooms', 'bed', 'Room status'], ['tasks', 'check', 'Tasks']] },
+    { grp: 'Outlets', items: [['fnb', 'cup', 'Restaurant & bar'], ['activities', 'sun', 'Activities & spa'], ['guestapp', 'phone', 'Guest app']] },
+    { grp: 'Management', items: [['reports', 'chart', 'Reports'], ['roster', 'clock', 'Staff roster'], ['settings', 'gear', 'Settings']] }
   ];
   R.param = '';
   function badge(id) {
@@ -330,10 +337,11 @@
     ${[['Kristine (front desk)', 'Check in an arrival. The registration card asks for an ID. Try one whose room is dirty.'],
        ['Kristine', 'Check out a departure with a balance. Payment comes first, then the receipt.'],
        ['Kristine', 'Open a booking, Bill tab, and void a charge. Dennis (supervisor) has to approve with PIN 1234.'],
-       ['Kristine', 'Walk-ins: sell a day tour with a senior and a kubo. Try 10 guests in one kubo (it holds 8): a note is needed. Then close the shift under Cashier.'],
+       ['Kristine', 'Day pass: sell a day tour with a senior and a kubo. Try 10 guests in one kubo (it holds 8): a note is needed. Then close the shift under Cashier.'],
        ['Kristine', 'Reservations → Availability & groups: copy a quote for Messenger, then make a group booking with one bill.'],
-       ['Kristine', 'Walk-ins: the Pavilion is reserved for the Acenas reunion. Tap it, start their sale, and see the deposit taken off.'],
+       ['Kristine', 'Day pass: the Pavilion is reserved for the Acenas reunion. Tap it, start their sale, and see the deposit taken off.'],
        ['Kristine', 'Guests → Possible duplicates: open one and merge it. Then message a guest from their booking.'],
+       ['Kristine', 'A checked-in guest wants a kubo: open their booking, press Use a cottage. Their people get in free, the kubo goes on the room bill. Try voucher CAMSAIR10.'],
        ['Aira (room attendant)', 'Mark a room cleaned. Then sign in as Lorna (head housekeeper) to inspect it.'],
        ['Jun (night auditor)', 'Run the night audit: no-shows, room nights posted, business date moves to tomorrow.'],
        ['Rosalie (manager)', 'Settings → Property layout: add a building and rooms, move blocks on the map. Settings → Rooms & rates: add a room type.'],

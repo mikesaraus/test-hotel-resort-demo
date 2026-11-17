@@ -24,6 +24,32 @@
     R.confirm('Delete season?', `"${esc(s.name)}" will stop applying to new bookings. Existing bookings keep their prices.`, 'Delete', () => { R.S.seasons = R.S.seasons.filter(x => x !== s); R.log('Season deleted', s.name); R.rerender(); }, true);
   };
   R.act.setRule = (d, el) => { if (!guard('settings')) return R.render(); R.S.rules[d.k] = d.k === 'deposit' ? Math.max(0, Math.min(100, +el.value || 0)) : el.value; R.log('House rule', `${d.k} = ${el.value}`); R.rerender(); R.toast('Saved'); };
+  R.act.setGuestFree = (d, el) => { if (!guard('settings')) return R.render(); R.S.rules.guestEntranceFree = el.checked; R.log('House rule', `Entrance free for overnight guests: ${el.checked ? 'yes' : 'no'}`); R.rerender(); R.toast('Saved'); };
+  R.act.setVoucher = (d, el) => {
+    if (!guard('settings')) return R.render();
+    const v = R.S.vouchers.find(x => x.code === d.code);
+    if (d.f === 'active') v.active = el.checked;
+    else if (d.f === 'value') { const n = Math.round(+el.value); if (!(n > 0) || (v.kind === 'pct' && n > 100)) { R.toast(v.kind === 'pct' ? 'Use 1 to 100%' : 'Enter an amount above 0', 'warn'); return R.render(); } v.value = n; }
+    else v[d.f] = el.value.trim() || v[d.f];
+    R.log('Voucher', `${v.code}: ${d.f} = ${d.f === 'active' ? el.checked : el.value}`); R.rerender();
+  };
+  R.act.addVoucher = () => {
+    if (!guard('settings')) return;
+    R.modal('Add a voucher', `<div class="form"><label class="field">Code<input id="avC" placeholder="e.g. SUMMER15" style="text-transform:uppercase" autofocus></label>
+      <label class="field">Description<input id="avL" placeholder="e.g. 15% off cottage"></label>
+      <label class="field">Type<select id="avK"><option value="pct">Percent off the cottage</option><option value="amt">Peso amount off the cottage</option></select></label>
+      <label class="field">Value<input id="avV" type="number" min="1" value="10"></label></div>
+      <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="avGo">Add voucher</button></div>`, b => {
+      b.querySelector('#avGo').onclick = () => {
+        const code = b.querySelector('#avC').value.trim().toUpperCase(), kind = b.querySelector('#avK').value, val = Math.round(+b.querySelector('#avV').value);
+        if (!/^[A-Z0-9]{3,16}$/.test(code)) return R.toast('Use 3 to 16 letters or numbers', 'warn');
+        if (R.S.vouchers.some(v => v.code === code)) return R.toast('That code already exists', 'warn');
+        if (!(val > 0) || (kind === 'pct' && val > 100)) return R.toast('Check the value', 'warn');
+        R.S.vouchers.push({ code, label: b.querySelector('#avL').value.trim() || (kind === 'pct' ? val + '% off cottage' : '₱' + val + ' off cottage'), kind, value: val, active: true, uses: 0 });
+        R.log('Voucher added', code); R.closeModal(); R.rerender();
+      };
+    });
+  };
   R.act.setNotify = (d, el) => { if (!guard('settings')) return R.render(); R.S.notify[d.k] = d.k === 'on' ? el.checked : el.value; R.log('Report delivery', `${d.k} = ${d.k === 'on' ? el.checked : el.value}`); R.rerender(); R.toast('Saved'); };
   R.act.setFee = (d, el) => { if (!guard('settings')) return R.render(); const s = R.S.sources.find(x => x.name === d.n); s.commission = Math.max(0, +el.value || 0); R.log('Commission', `${s.name}: ${s.commission}%`); R.rerender(); };
   R.act.addSource = () => {
@@ -267,7 +293,19 @@
       <h3 style="margin:18px 0 8px">Daily manager report</h3>
       <div class="form"><label class="full check"><input type="checkbox" ${R.S.notify.on ? 'checked' : ''} data-change="setNotify" data-k="on" ${can ? '' : 'disabled'}> Send the report automatically after each night audit</label>
         <label class="field">Send to (name and mobile or email)<input value="${esc(R.S.notify.to)}" data-change="setNotify" data-k="to" ${can ? '' : 'disabled'}></label>
-        <label class="field">Latest time<input type="time" value="${esc(R.S.notify.time)}" data-change="setNotify" data-k="time" ${can ? '' : 'disabled'}></label></div></div>`;
+        <label class="field">Latest time<input type="time" value="${esc(R.S.notify.time)}" data-change="setNotify" data-k="time" ${can ? '' : 'disabled'}></label></div>
+      <h3 style="margin:18px 0 8px">Overnight guests in the day-tour area</h3>
+      <label class="check"><input type="checkbox" ${R.S.rules.guestEntranceFree ? 'checked' : ''} data-change="setGuestFree" ${can ? '' : 'disabled'}> Entrance is free for the people on a room booking (visitors still pay)</label>
+      <p class="small muted" style="margin-top:6px">Cottages are at the regular price for everyone. Use a voucher or an approved discount to lower it.</p></div>`;
+  }
+  function vouchers(can) {
+    const dis = can ? '' : 'disabled';
+    return `<div class="panel"><div class="ph"><h2>Vouchers</h2><div class="sp">${can ? `<button class="btn sm" data-act="addVoucher">${R.icon('plus')}Add voucher</button>` : ''}</div></div>
+      <p class="small muted" style="margin-bottom:8px">Codes the cashier types on Day pass. They lower the cottage price only. Without a code, a discount needs a supervisor's PIN and a reason.</p>
+      <div class="tbl"><table><thead><tr><th>Code</th><th>Description</th><th>Type</th><th>Value</th><th class="right">Used</th><th>Active</th></tr></thead><tbody>
+      ${R.S.vouchers.map(v => `<tr><td><b>${esc(v.code)}</b></td><td><input class="search" value="${esc(v.label)}" data-change="setVoucher" data-code="${esc(v.code)}" data-f="label" ${dis} aria-label="${esc(v.code)} description"></td>
+        <td class="small">${v.kind === 'pct' ? 'Percent off' : 'Peso amount off'}</td><td><input class="search" type="number" min="1" style="width:90px" value="${v.value}" data-change="setVoucher" data-code="${esc(v.code)}" data-f="value" ${dis} aria-label="${esc(v.code)} value"></td>
+        <td class="right">${v.uses}</td><td><input type="checkbox" ${v.active ? 'checked' : ''} data-change="setVoucher" data-code="${esc(v.code)}" data-f="active" ${dis} aria-label="${esc(v.code)} active"></td></tr>`).join('')}</tbody></table></div></div>`;
   }
   function sources(can) {
     return `<div class="panel"><div class="ph"><h2>Booking sources</h2><div class="sp">${can ? '<button class="btn sm" data-act="addSource">Add source</button>' : ''}</div></div>
@@ -312,10 +350,10 @@
     hint: 'Rates, seasons and house rules for managers. Users and modules for the owner. Everything changed here is logged.',
     render() {
       const can = R.can('settings');
-      const tabs = [['rates', 'Rooms & rates'], ['layout', 'Property layout'], ['seasons', 'Seasons'], ['rules', 'House rules'], ['sources', 'Booking sources'], ['users', 'Users & roles'], ['modules', 'Modules'], ['audit', 'Audit log']];
+      const tabs = [['rates', 'Rooms & rates'], ['layout', 'Property layout'], ['seasons', 'Seasons'], ['rules', 'House rules'], ['sources', 'Booking sources'], ['vouchers', 'Vouchers'], ['users', 'Users & roles'], ['modules', 'Modules'], ['audit', 'Audit log']];
       return `<div class="tabs">${tabs.map(([k, l]) => `<button class="${sTab === k ? 'on' : ''}" aria-pressed="${sTab === k}" data-act="sTab" data-tab="${k}">${l}</button>`).join('')}</div>
         ${can ? '' : '<p class="small muted" style="margin-bottom:10px">View only.</p>'}
-        ${{ rates, layout, seasons, rules, sources, users, modules, audit }[sTab](can)}`;
+        ${{ rates, layout, seasons, rules, sources, vouchers, users, modules, audit }[sTab](can)}`;
     },
     mount(el) {
       const s = el.querySelector('#logQ');

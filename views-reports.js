@@ -139,13 +139,13 @@
   function daytour() {
     const S = R.S.sales.filter(s => s.kind === 'daytour' && s.date === bd());
     const pax = { adult: 0, child: 0, senior: 0, toddler: 0 }; S.forEach(s => Object.keys(pax).forEach(k => { pax[k] += s.pax[k]; }));
-    const heads = Object.values(pax).reduce((a, b) => a + b, 0), rev = S.reduce((s, x) => s + x.calc.total, 0);
+    const heads = S.reduce((a, x) => a + x.calc.heads, 0), rev = S.reduce((s, x) => s + x.calc.total, 0);
     const cot = {}; S.forEach(s => s.cottages.forEach(id => { cot[id] = (cot[id] || 0) + 1; }));
     const D = R.S.dayuse;
     const extras = {}; S.forEach(s => s.items.forEach(i => { const x = D.extras.find(e => e.id === i.id); extras[x.name] = (extras[x.name] || 0) + i.qty * x.price; }));
     return `<div class="pulse">${tile(heads, 'Day guests today')}${tile(R.money(rev), 'Day tour revenue')}${tile(R.money(heads ? rev / heads : 0), 'Revenue per guest')}
         ${tile(Object.keys(cot).length + ' of ' + D.cottages.length, 'Cottages rented today')}${tile(S.filter(s => s.session === 'day').length + ' / ' + S.filter(s => s.session === 'night').length, 'Day tour / night swim sales')}${tile(R.money(S.reduce((s, x) => s + x.calc.discount, 0)), 'Senior / PWD discounts')}</div>
-      <div class="grid g2"><div class="panel"><h2>Guests by type</h2>${hbars([['Adults', pax.adult], ['Children 3–12', pax.child], ['Senior / PWD', pax.senior], ['Below 3', pax.toddler]], v => v)}</div>
+      <div class="grid g2"><div class="panel"><h2>Guests by type</h2>${hbars([['Overnight guests', S.reduce((a, x) => a + (x.freeHeads || 0), 0)], ['Adults', pax.adult], ['Children 3–12', pax.child], ['Senior / PWD', pax.senior], ['Below 3', pax.toddler]], v => v)}</div>
         <div class="panel"><h2>Rentals and fees</h2>${Object.keys(extras).length ? hbars(Object.entries(extras).sort((a, b) => b[1] - a[1]), R.money) : '<p class="empty">None sold yet today</p>'}</div></div>
       <p class="small muted" style="margin-top:12px">This is the open business date. Earlier days are in the daily manager reports saved by each night audit.</p>`;
   }

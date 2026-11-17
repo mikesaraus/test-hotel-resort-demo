@@ -237,6 +237,10 @@ table.roster td{padding:6px 4px}
 .ticket-lines{height:270px;overflow-y:auto;margin:0 -6px;padding:0 6px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
 .ticket-lines .empty{padding:100px 12px}
 .line-note{padding:6px 0}
+.till-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-height:58px;background:var(--surface);box-shadow:var(--edge);border-radius:var(--r-m);padding:8px 14px;margin-bottom:16px}
+.till-bar.on{background:#E7F0E4;box-shadow:inset 3px 0 0 var(--palm),var(--edge);color:#203A27}
+.till-bar .grow{flex:1;min-width:200px}
+.till-bar .mini-step .btn{min-height:26px;padding:0 8px}
 .over-note{background:var(--sun-l);border-radius:var(--r-s);padding:8px 10px;margin:8px 0;display:flex;flex-direction:column;gap:6px;color:#5A3F0E}
 .ticket-lines .ticket-line{min-height:44px;align-items:center}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden;background:#fff}

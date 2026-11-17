@@ -73,7 +73,7 @@
   R.act.rView = d => { rView = d.v; R.render(); };
   R.act.rFilter = d => { rFilter = rFilter === d.f ? '' : d.f; R.render(); };
   R.views.rooms = {
-    title: 'Rooms',
+    title: 'Room status',
     hint: 'Each room has two statuses: occupied or vacant, and dirty, clean or inspected. Click a room to change it.',
     render() {
       const k = R.roleKey(), me = R.S.user;

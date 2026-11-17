@@ -52,16 +52,25 @@ window.R = window.R || {};
   };
   R.calcTicket = function (t, cat) {
     const ent = cat.entrance[t.session], p = t.pax, sess = t.session === 'day' ? 'day tour' : 'night swim';
-    const heads = p.adult + p.child + p.senior + p.toddler;
+    // overnight guests on a room booking get in free (entrance is part of the room rate); visitors pay
+    const fh = t.freeHeads || 0;
+    const heads = p.adult + p.child + p.senior + p.toddler + fh;
     const sh = heads ? p.senior / heads : 0;
     const lines = [];
+    if (fh) lines.push({ name: 'Overnight guests, entrance included', qty: fh, price: 0, share: 0 });
     if (p.adult) lines.push({ name: `Entrance, adult (${sess})`, qty: p.adult, price: ent.adult, share: 0 });
     if (p.child) lines.push({ name: `Entrance, child 3–12 (${sess})`, qty: p.child, price: ent.child, share: 0 });
     if (p.senior) lines.push({ name: `Entrance, senior / PWD (${sess})`, qty: p.senior, price: ent.adult, share: 1 });
     if (p.toddler) lines.push({ name: 'Entrance, below 3 (free)', qty: p.toddler, price: 0, share: 0 });
-    t.cottages.forEach(id => { const c = cat.cottages.find(x => x.id === id); lines.push({ name: `${c.name} (${sess})`, qty: 1, price: c.price, share: sh }); });
+    t.cottages.forEach(id => { const c = cat.cottages.find(x => x.id === id); lines.push({ name: `${c.name} (${sess})`, qty: 1, price: c.price, share: sh, cot: true }); });
     t.items.forEach(({ id, qty }) => { const x = cat.extras.find(e => e.id === id); lines.push({ name: x.name, qty, price: x.price, share: x.shared ? sh : 0 }); });
     (t.custom || []).forEach(l => lines.push({ name: l.name, qty: l.qty, price: l.price, share: sh }));
+    // voucher or approved discount: applies to the cottage price only
+    if (t.voucher) {
+      const cot = lines.filter(l => l.cot).reduce((s2, l) => s2 + l.qty * l.price, 0);
+      const amt = Math.min(cot, t.voucher.kind === 'pct' ? Math.round(cot * t.voucher.value) / 100 : t.voucher.value);
+      if (amt > 0) lines.push({ name: `${t.voucher.label}${t.voucher.code !== 'MANUAL' ? ' (' + t.voucher.code + ')' : ''}`, qty: 1, price: -amt, share: sh, voucher: true });
+    }
     return { heads, ...R.taxCalc(lines) };
   };
 

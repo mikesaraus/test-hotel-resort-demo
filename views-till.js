@@ -67,7 +67,7 @@
       ${row('VATable sales', R.peso(c.vatable))}${row('VAT (12%)', R.peso(c.vat))}${row('VAT-exempt sales', R.peso(c.vatExempt))}
       <hr>${row(R.methodName(s.method), R.peso(s.tendered))}${s.method === 'cash' ? row('Change', R.peso(s.change)) : ''}${s.ref ? row('Reference no.', esc(s.ref)) : ''}
       ${s.overNote ? `<p class="rc-band">Over capacity: ${esc(s.overNote)}</p>` : ''}
-      ${s.kind === 'daytour' && c.heads ? `<p class="rc-band">Give ${c.heads} wristband${c.heads > 1 ? 's' : ''}: <b>${s.session === 'day' ? 'yellow (day tour)' : 'blue (night swim)'}</b></p>` : ''}
+      ${s.kind === 'daytour' && c.heads ? `<p class="rc-band">Wristbands: ${[s.freeHeads ? `<b>${s.freeHeads} green</b> (overnight guests)` : '', c.heads - (s.freeHeads || 0) ? `<b>${c.heads - (s.freeHeads || 0)} ${s.session === 'day' ? 'yellow' : 'blue'}</b> (${s.session === 'day' ? 'day tour' : 'night swim'})` : ''].filter(Boolean).join(' and ')}</p>` : ''}
       <p class="rc-foot">Thank you for visiting Camsair Resort!</p></div>
       <div class="foot"><button class="btn ghost" data-act="fdReprint">${R.icon('print')}Print receipt</button><button class="btn" data-act="closeModal">Done</button></div>`);
   };
@@ -76,7 +76,13 @@
   const cat = () => R.S.dayuse;
   const PAX = [['adult', 'Adult', 'over 12'], ['child', 'Child', '3 to 12'], ['senior', 'Senior / PWD', 'ID needed, 20% off'], ['toddler', 'Below 3', 'free']];
   const nowSession = () => new Date().getHours() >= 17 ? 'night' : 'day';
-  const blank = () => ({ session: nowSession(), pax: { adult: 0, child: 0, senior: 0, toddler: 0 }, cottages: [], items: [], method: 'cash', tendered: '', ref: '', seniorId: '', roomRes: '', name: '', custom: [], prepaid: 0, vbId: '', overNote: '' });
+  const blank = () => ({ session: nowSession(), pax: { adult: 0, child: 0, senior: 0, toddler: 0 }, cottages: [], items: [], method: 'cash', tendered: '', ref: '', seniorId: '', roomRes: '', name: '', custom: [], prepaid: 0, vbId: '', overNote: '', inhouse: '', freeHeads: 0, voucher: null });
+  // overnight guests using the day-tour area: their people on the booking get in free, the rest are visitors
+  const guestMode = (r, pax) => {
+    const onBooking = r.adults + r.children, free = R.S.rules.guestEntranceFree ? Math.min(onBooking, pax == null ? onBooking : pax) : 0;
+    Object.assign(T, { inhouse: r.id, freeHeads: free, method: 'room', roomRes: r.id, name: `Room ${r.room} · ${R.guest(r.guestId).name}` });
+    return { onBooking, free };
+  };
   let T = blank(), extraCat = 'Rentals';
   const calc = () => R.calcTicket(T, cat());
   const due = c => Math.max(0, Math.round((c.total - (T.prepaid || 0)) * 100) / 100);
@@ -122,7 +128,8 @@
     if (!R.need('till')) return;
     const c = calc(), why = problem(c);
     if (why) return R.toast(why, 'warn');
-    const sale = { kind: 'daytour', session: T.session, pax: { ...T.pax }, cottages: T.cottages.slice(), items: T.items.map(x => ({ ...x })), name: T.name.trim(), seniorId: T.seniorId.trim(), overNote: capOf(c).over ? T.overNote.trim() : '' };
+    const sale = { kind: 'daytour', session: T.session, pax: { ...T.pax }, cottages: T.cottages.slice(), items: T.items.map(x => ({ ...x })), name: T.name.trim(), seniorId: T.seniorId.trim(), overNote: capOf(c).over ? T.overNote.trim() : '', freeHeads: T.freeHeads, inhouse: T.inhouse, voucher: T.voucher };
+    if (T.voucher && T.voucher.code !== 'MANUAL') { const v = R.S.vouchers.find(x => x.code === T.voucher.code); if (v) v.uses++; }
     const vb = T.vbId && R.S.venueBookings.find(v => v.id === T.vbId);
     if (vb) Object.assign(sale, { prepaid: T.prepaid, vbId: vb.id, depositOR: vb.payments.map(p => p.or).join(', ') });
     const room = recordSale(T, sale, c, `Day tour: ${c.lines.map(l => l.qty + '× ' + l.name).join(', ')}`, 'Day tour & cottages', due(c));
@@ -147,14 +154,61 @@
       <div class="foot"><button class="btn ghost" data-act="goView" data-v="events">Open reservation list</button><button class="btn" data-act="fdArrive" data-id="${v.id}">Group has arrived: start sale</button></div>`);
   }
   R.act.goView = d => { R.closeModal(); R.go(d.v); };
+  R.act.useCottage = d => {
+    if (!R.need('till')) return;
+    const r = R.res(d.id);
+    if (r.status !== 'inhouse') return R.toast('Check the guest in first. A future stay can reserve a cottage instead.', 'warn');
+    T = blank(); guestMode(r); R.closeModal(); R.go('till');
+    R.toast(`${T.freeHeads} guest${T.freeHeads === 1 ? '' : 's'} on the booking get in free. Pick the cottage, add any visitors.`);
+  };
+  R.act.fdInhouse = () => {
+    const L = R.inhouse();
+    R.modal('Overnight guest', `<p class="small muted" style="margin-bottom:10px">Guests staying at Camsair get in free${R.S.rules.guestEntranceFree ? '' : ' (switched off in Settings)'}. Cottages are at the regular price unless a voucher or discount is used. Everything goes on the room bill.</p>
+      <label class="field">Room<select id="ihR">${L.map(r => `<option value="${r.id}">Room ${r.room} · ${esc(R.guest(r.guestId).name)} · ${r.adults + r.children} guests</option>`).join('')}</select></label>
+      <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="ihGo">Continue</button></div>`, b => {
+      b.querySelector('#ihGo').onclick = () => R.act.useCottage({ id: b.querySelector('#ihR').value });
+    });
+  };
+  R.act.fdInhouseOff = () => { Object.assign(T, { inhouse: '', freeHeads: 0, method: 'cash', roomRes: '', name: '' }); R.render(); };
+  R.act.fdFree = d => { const r = R.res(T.inhouse); T.freeHeads = Math.max(0, Math.min(r.adults + r.children, T.freeHeads + +d.n)); R.render(); };
+  R.act.fdVoucherOff = () => { T.voucher = null; R.render(); };
+  R.act.fdVoucher = () => {
+    if (!T.cottages.length) return R.toast('Add a cottage first. Vouchers and discounts apply to the cottage price.', 'warn');
+    const V = R.S.vouchers.filter(v => v.active);
+    R.modal('Voucher or discount', `<p class="small muted" style="margin-bottom:10px">Applies to the cottage price on this sale. Without one, everyone pays the regular price.</p>
+      <div class="form"><label class="field full">Voucher code<input id="vcC" placeholder="e.g. CAMSAIR10" autocomplete="off" style="text-transform:uppercase"></label></div>
+      <p class="small" id="vcMsg" style="min-height:1.4em;margin:6px 0"></p>
+      <details class="small"><summary>No voucher: give a discount (needs a supervisor)</summary>
+        <div class="form" style="margin-top:8px"><label class="field">Discount on the cottage (%)<input id="vcP" type="number" min="1" max="100" placeholder="e.g. 20"></label></div>
+        <button class="btn sm ghost" id="vcD" style="margin-top:8px">Ask for approval</button></details>
+      <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="vcGo">Apply voucher</button></div>`, b => {
+      const $ = x => b.querySelector(x);
+      $('#vcGo').onclick = () => {
+        const code = $('#vcC').value.trim().toUpperCase(), v = V.find(x => x.code === code);
+        if (!v) { $('#vcMsg').textContent = R.S.vouchers.some(x => x.code === code) ? 'That voucher is switched off.' : 'No voucher with that code.'; $('#vcMsg').className = 'small warn-text'; return; }
+        T.voucher = { code: v.code, label: v.label, kind: v.kind, value: v.value };
+        R.closeModal(); R.render(); R.toast(`${v.label} applied`);
+      };
+      $('#vcD').onclick = () => {
+        const p = Math.round(+$('#vcP').value);
+        if (!(p > 0 && p <= 100)) { $('#vcMsg').textContent = 'Enter a discount from 1 to 100%.'; $('#vcMsg').className = 'small warn-text'; return; }
+        R.authorize({ perm: 'rate', title: `Approve ${p}% off the cottage`, ok: 'Approve discount', placeholder: 'e.g. complaint about the room, loyal guest' }, a => {
+          T.voucher = { code: 'MANUAL', label: `Discount ${p}% on cottage`, kind: 'pct', value: p, by: a.by, reason: a.reason };
+          R.log('Discount approved', `${p}% on cottage · ${a.reason}`, '', a.by); R.save(); R.render(); R.toast('Discount applied');
+        });
+      };
+    });
+  };
   R.act.fdArrive = d => {
     if (!R.need('till')) return;
     const v = R.S.venueBookings.find(x => x.id === d.id);
     T = blank();
     Object.assign(T, { session: v.session, cottages: [v.venue], name: v.name, vbId: v.id, prepaid: R.vPaid(v), custom: v.catering ? [{ name: v.catering.name, qty: v.pax, price: v.catering.price }] : [], overNote: v.overNote || '' });
-    T.pax.adult = v.pax;
+    const stay = v.resId && R.res(v.resId);
+    if (stay && stay.status === 'inhouse') { const g = guestMode(stay, v.pax); T.pax.adult = Math.max(0, v.pax - g.free); T.name = v.name; }
+    else T.pax.adult = v.pax;
     R.closeModal(); R.go('till');
-    R.toast('Set children, seniors and babies, then take the balance', '');
+    R.toast(stay && stay.status === 'inhouse' ? 'Overnight guests get in free. Adjust visitors, then charge to the room' : 'Set children, seniors and babies, then take the balance', '');
   };
   function openCottage(id) {
     const c = cat().cottages.find(x => x.id === id), s = saleOf(R.S.cottageUse[id]);
@@ -168,8 +222,8 @@
   }
 
   R.views.till = {
-    title: 'Walk-ins',
-    hint: 'Walk-in day tour and night swim guests pay here: entrance, cottage, rentals and fees. Groups with a cottage reservation are checked in here too.',
+    title: 'Day pass',
+    hint: 'Day tour and night swim: entrance, cottages, rentals and fees. Groups with a cottage reservation and staying guests who want a cottage are handled here too.',
     render() {
       const D = cat(), c = calc(), why = problem(c), used = R.S.cottageUse;
       const todays = R.S.sales.filter(s => s.date === bd() && s.kind === 'daytour');
@@ -178,6 +232,9 @@
       const ent = D.entrance[T.session];
       const { cap: capPicked, over } = capOf(c);
 
+      const ih = T.inhouse && R.res(T.inhouse);
+      const bar = `<div class="till-bar ${ih ? 'on' : ''}">${ih ? `${R.icon('bed')}<div class="grow"><b>Overnight guest: room ${ih.room}, ${esc(R.guest(ih.guestId).name)}</b><div class="small">${T.freeHeads} of ${ih.adults + ih.children} on the booking get in free ${R.S.rules.guestEntranceFree ? '' : '(off in Settings)'}<span class="mini-step" style="display:inline-flex;margin-left:8px"><button class="btn sm ghost" data-act="fdFree" data-n="-1" aria-label="One fewer overnight guest" ${T.freeHeads ? '' : 'disabled'}>−</button><button class="btn sm ghost" data-act="fdFree" data-n="1" aria-label="One more overnight guest" ${T.freeHeads < ih.adults + ih.children ? '' : 'disabled'}>+</button></span> · add visitors below · cottage at regular price</div></div><button class="btn sm ghost" data-act="fdInhouseOff">Not a room guest</button>`
+        : `<span class="small muted grow">Day visitors pay here. Staying guests and walk-in room bookings start from the buttons.</span>${R.inhouse().length ? `<button class="btn sm ghost" data-act="fdInhouse">${R.icon('bed')}Overnight guest using a cottage</button>` : ''}${R.can('book') ? `<button class="btn sm ghost" data-act="newBooking" data-ch="Walk-in">${R.icon('plus')}Book an overnight room</button>` : ''}`}</div>`;
       const strip = `<div class="pulse pulse5">
         <div><b>${heads}</b><span>Day guests today</span></div>
         <div><b>${free} of ${D.cottages.length}</b><span>Cottages free</span></div>
@@ -201,17 +258,19 @@
       const extras = `<div class="tabs tabs-sm">${extraCats.map(k => `<button class="${extraCat === k ? 'on' : ''}" data-act="fdExtraCat" data-c="${k}">${k}</button>`).join('')}</div>
         <div class="menu-grid">${D.extras.filter(x => x.cat === extraCat).map(x => { const q = (T.items.find(i => i.id === x.id) || {}).qty; return R.tile(x.name, x.price, q, 'fdItem', x.id); }).join('')}</div>`;
       const refs = [];
+      if (T.freeHeads) refs.push(['fdFree', '', true]);
       ['adult', 'child', 'senior', 'toddler'].forEach(k => { if (T.pax[k]) refs.push(['fdPax', `data-k="${k}"`, true]); });
       T.cottages.forEach(id => refs.push(['fdUnCot', `data-id="${id}"`, false]));
       T.items.forEach(i => refs.push(['fdItem', `data-id="${i.id}"`, true]));
       (T.custom || []).forEach((_, i) => refs.push(['fdCustom', `data-i="${i}"`, true]));
+      if (c.lines.some(l => l.voucher)) refs.push(['fdVoucherOff', '', false]);
       const ctl = (ref, name) => !ref ? '' : ref[2]
         ? `<button class="qbtn" data-act="${ref[0]}" ${ref[1]} data-n="-1" aria-label="One less: ${esc(name)}">−</button><button class="qbtn" data-act="${ref[0]}" ${ref[1]} data-n="1" aria-label="One more: ${esc(name)}">+</button>`
         : `<button class="qbtn" data-act="${ref[0]}" ${ref[1]} aria-label="Remove ${esc(name)}">✕</button>`;
       const lines = c.lines.length ? c.lines.map((l, i) => `<div class="ticket-line edit"><span>${l.qty} × ${esc(l.name)}</span><span class="line-ctl"><b class="num">${R.peso(l.amount)}</b>${ctl(refs.length === c.lines.length && refs[i], l.name)}</span></div>`).join('') : '<p class="empty">Tap guests, a cottage or a rental to start</p>';
       const tot = due(c);
       const ticket = `<div class="panel ticket">
-        <div class="ph"><h2>Current sale</h2><div class="sp"><button class="btn sm ghost" data-act="fdClear" ${c.lines.length ? '' : 'disabled'}>Clear</button></div></div>
+        <div class="ph"><h2>Current sale</h2><div class="sp"><button class="btn sm ghost" data-act="fdVoucher" ${T.cottages.length && !T.voucher ? '' : 'disabled'}>Voucher</button><button class="btn sm ghost" data-act="fdClear" ${c.lines.length ? '' : 'disabled'}>Clear</button></div></div>
         <label class="field" style="margin-bottom:8px">Group or guest name (optional)<input id="fdName" value="${esc(T.name)}" placeholder="e.g. Santos family"></label>
         <div class="ticket-lines" aria-live="polite">
           ${over ? `<div class="over-note"><p class="small"><b>${c.heads} guests, but the cottage${T.cottages.length > 1 ? 's hold' : ' holds'} ${capPicked}.</b> Add another cottage, or write why it's OK.</p><label class="field">Note (required)<input id="fdOver" value="${esc(T.overNote)}" placeholder="e.g. 2 are babies, extra table added, OK'd by Dennis"></label></div>` : ''}
@@ -229,8 +288,8 @@
         <div class="tbl"><table><thead><tr><th>Time</th><th>Receipt</th><th>Guest</th><th>Cottage</th><th>Paid by</th><th class="right">Total</th></tr></thead><tbody>
         ${todays.map(s => `<tr class="click" data-act="${s.or ? 'fdReceipt' : 'openRes'}" data-id="${s.or ? s.id : s.resId}"><td class="num">${s.at}</td><td>${s.or || '<span class="chip">Room bill</span>'}</td><td>${esc(s.name || 'Walk-in')}<div class="small muted">${s.calc.heads} pax</div></td><td class="small">${s.cottages.map(id => esc(D.cottages.find(x => x.id === id).name)).join(', ') || '—'}</td><td>${R.methodName(s.method)}</td><td class="right num"><b>${R.peso(s.calc.total)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="empty">No sales yet today</td></tr>'}
         </tbody></table></div></div>`;
-      return `${strip}<div class="grid g-till"><div class="stack">
-          <div class="panel"><div class="ph"><h2>Guests</h2><div class="sp">${session}</div></div>${pax}</div>
+      return `${strip}${bar}<div class="grid g-till"><div class="stack">
+          <div class="panel"><div class="ph"><h2>${ih ? 'Visitors with them (pay entrance)' : 'Guests'}</h2><div class="sp">${session}</div></div>${pax}</div>
           <div class="panel"><div class="ph"><h2>Cottages</h2><div class="sp small muted">Tap a free cottage to add it. Tap a rented one to see who has it.</div></div>${cottages}</div>
           <div class="panel"><h2>Rentals and fees</h2>${extras}</div>
         </div>${ticket}</div>
@@ -324,7 +383,10 @@
   R.act.newEvent = d => {
     if (!R.need('till')) return;
     const D = R.S.dayuse;
+    const stays = R.S.reservations.filter(r => (r.status === 'booked' || r.status === 'inhouse') && R.dep(r) >= bd()).sort((a, b) => (a.room || '').localeCompare(b.room || '', undefined, { numeric: true }));
+    const pre = d.res ? R.res(d.res) : null;
     R.modal('Reserve a cottage or the pavilion', `<div class="form">
+      <label class="field full">Staying guest (optional)<select id="evR"><option value="">Day visitors (no room booking)</option>${stays.map(r => `<option value="${r.id}" ${pre && pre.id === r.id ? 'selected' : ''}>${r.room ? 'Room ' + r.room : r.id} · ${esc(R.guest(r.guestId).name)} · ${R.fmtShort(r.arrive)} → ${R.fmtShort(R.dep(r))}</option>`).join('')}</select></label>
       <label class="field">Cottage<select id="evV">${D.cottages.map(c => `<option value="${c.id}" ${c.id === d.venue ? 'selected' : ''}>${esc(c.name)} · up to ${c.cap} · ${R.money(c.price)}</option>`).join('')}</select></label>
       <label class="field">Date<input id="evD" type="date" min="${bd()}" value="${d.date || addDays(bd(), 1)}"></label>
       <label class="field">Session<select id="evS">${Object.entries(SESS).map(([k, l]) => `<option value="${k}" ${k === d.session ? 'selected' : ''}>${l} (${D.hours[k]})</option>`).join('')}</select></label>
@@ -343,6 +405,17 @@
       <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="evGo">Reserve</button></div>`, b => {
       const $ = x => b.querySelector(x);
       let lastPrice = -1;
+      // a staying guest: fill their details and keep the date inside their stay
+      const pickStay = () => {
+        const r = R.res($('#evR').value);
+        if (!r) { $('#evD').min = bd(); $('#evD').removeAttribute('max'); return; }
+        const g = R.guest(r.guestId), from = r.arrive > bd() ? r.arrive : bd();
+        $('#evD').min = from; $('#evD').max = R.dep(r);
+        if ($('#evD').value < from || $('#evD').value > R.dep(r)) $('#evD').value = from;
+        $('#evN').value = `Room ${r.room || r.id} · ${g.name}`; $('#evP').value = g.phone; $('#evX').value = r.adults + r.children;
+      };
+      $('#evR').addEventListener('change', () => { pickStay(); q(); });
+      if (pre) pickStay();
       const q = () => {
         const c = R.venue($('#evV').value), pax = Math.max(1, +$('#evX').value || 1), k = $('#evK').value, pk = k === '' ? null : PACKAGES[+k];
         const price = c.price + (pk ? pk.price * pax : 0), taken = vTaken(c.id, $('#evD').value, $('#evS').value);
@@ -356,15 +429,18 @@
       b.querySelectorAll('input,select').forEach(i => i.addEventListener('input', q)); q();
       $('#evGo').onclick = () => {
         const x = q(), err = m => { $('#evErr').textContent = m; };
+        const stay = R.res($('#evR').value);
+        if (stay && ($('#evD').value < stay.arrive || $('#evD').value > R.dep(stay))) return err(`Pick a date during the stay: ${R.fmtShort(stay.arrive)} to ${R.fmtShort(R.dep(stay))}.`);
         if ($('#evN').value.trim().length < 3) return err('Enter the group name.');
         if ($('#evP').value.trim().length < 7) return err('Enter a mobile number.');
         if (x.pax > x.c.cap && $('#evOver').value.trim().length < 5) return err(`${x.pax} guests is more than ${x.c.name} holds (${x.c.cap}). Write why it's OK.`);
         const dep = $('#evDep').value, amt = +$('#evAmt').value || 0;
         if (dep && !(amt > 0)) return err('Enter the deposit amount.');
         if (dep && dep !== 'Cash' && $('#evRef').value.trim().length < 4) return err('Enter the deposit reference number.');
-        const v = { id: R.nextId('EV'), venue: x.c.id, date: $('#evD').value, session: $('#evS').value, name: $('#evN').value.trim(), phone: $('#evP').value.trim(), pax: x.pax, catering: x.pk, eta: $('#evE').value || '09:00', notes: $('#evNo').value.trim(), overNote: x.pax > x.c.cap ? $('#evOver').value.trim() : '', price: x.price, status: 'booked', payments: [], created: bd() };
+        const v = { id: R.nextId('EV'), venue: x.c.id, date: $('#evD').value, session: $('#evS').value, name: $('#evN').value.trim(), phone: $('#evP').value.trim(), pax: x.pax, catering: x.pk, eta: $('#evE').value || '09:00', notes: $('#evNo').value.trim(), overNote: x.pax > x.c.cap ? $('#evOver').value.trim() : '', resId: $('#evR').value || '', price: x.price, status: 'booked', payments: [], created: bd() };
         if (dep) v.payments.push({ id: R.nextId('VP'), date: bd(), at: R.now(), amount: amt, method: dep, ref: $('#evRef').value.trim(), or: R.nextOR(), by: R.S.user, shift: R.S.shift.id });
         R.S.venueBookings.push(v);
+        if (v.resId) R.log('Cottage reserved', `${x.c.name}, ${R.fmtShort(v.date)} ${SESS[v.session].toLowerCase()}`, v.resId);
         R.log('Cottage reserved', `${x.c.name}, ${R.fmtShort(v.date)} ${SESS[v.session].toLowerCase()} · ${v.name} · ${R.money(v.price)}${dep ? ' · deposit ' + R.peso(amt) : ''}`, v.id);
         R.closeModal(); R.rerender(); R.toast(`${x.c.name} reserved for ${v.name}`);
       };
@@ -373,7 +449,7 @@
   R.act.openEvent = d => {
     const v = R.S.venueBookings.find(x => x.id === d.id), c = R.venue(v.venue), paid = R.vPaid(v);
     R.modal(`${c.name}: ${v.name}`, `<div class="row" style="margin-bottom:10px">${R.chip(v.status === 'arrived' ? 'done' : v.status === 'booked' ? 'booked' : v.status)}<span class="chip">${SESS[v.session]}</span></div>
-      <dl class="kv"><dt>Date</dt><dd>${R.fmt(v.date)}, arriving around ${v.eta}</dd><dt>Guests</dt><dd>${v.pax}</dd><dt>Mobile</dt><dd>${esc(v.phone)}</dd>
+      <dl class="kv">${v.resId ? `<dt>Staying guest</dt><dd><a href="#booking/${v.resId}" data-act="openRes" data-id="${v.resId}">${v.resId}</a> · entrance free for people on the booking</dd>` : ''}<dt>Date</dt><dd>${R.fmt(v.date)}, arriving around ${v.eta}</dd><dt>Guests</dt><dd>${v.pax}</dd><dt>Mobile</dt><dd>${esc(v.phone)}</dd>
         ${v.catering ? `<dt>Package</dt><dd>${esc(v.catering.name)} × ${v.pax} @ ${R.money(v.catering.price)}</dd>` : ''}${v.notes ? `<dt>Notes</dt><dd>${esc(v.notes)}</dd>` : ''}${v.overNote ? `<dt>Over capacity</dt><dd>${esc(v.overNote)}</dd>` : ''}
         <dt>Quoted</dt><dd>${R.money(v.price)} plus entrance fees on the day</dd>
         <dt>Paid</dt><dd>${v.payments.map(p => `${R.peso(p.amount)} ${esc(p.method)} · ${p.or} · ${R.fmtShort(p.date)}`).join('<br>') || 'Nothing yet'}</dd>
@@ -421,7 +497,7 @@
       const upcoming = R.S.venueBookings.filter(v => v.date >= bd() && v.status !== 'cancelled').sort((a, b) => (a.date + a.eta).localeCompare(b.date + b.eta));
       return `<div class="panel" style="margin-bottom:16px"><div class="ph"><h2>Upcoming</h2><div class="sp">${can ? `<button class="btn" data-act="newEvent">${R.icon('plus')}Reserve a cottage</button>` : ''}</div></div>
           <div class="tbl"><table><thead><tr><th>Date</th><th>Cottage</th><th>Group</th><th>Guests</th><th>Package</th><th>Status</th><th class="right">Quoted · paid</th></tr></thead><tbody>
-          ${upcoming.map(v => `<tr class="click" data-act="openEvent" data-id="${v.id}"><td>${R.fmt(v.date)}<div class="small muted">${SESS[v.session]} · ${v.eta}</div></td><td><b>${esc(R.venue(v.venue).name)}</b></td><td>${esc(v.name)}<div class="small muted">${esc(v.phone)}</div></td><td>${v.pax}</td><td class="small">${v.catering ? esc(v.catering.name) : '—'}</td>
+          ${upcoming.map(v => `<tr class="click" data-act="openEvent" data-id="${v.id}"><td>${R.fmt(v.date)}<div class="small muted">${SESS[v.session]} · ${v.eta}</div></td><td><b>${esc(R.venue(v.venue).name)}</b></td><td>${esc(v.name)}${v.resId ? ' <span class="chip ink">Room guest</span>' : ''}<div class="small muted">${esc(v.phone)}</div></td><td>${v.pax}</td><td class="small">${v.catering ? esc(v.catering.name) : '—'}</td>
             <td>${v.status === 'arrived' ? '<span class="chip green">Arrived</span>' : R.vPaid(v) ? '<span class="chip teal">Deposit paid</span>' : '<span class="chip amber">No deposit</span>'}</td><td class="right num">${R.money(v.price)}<div class="small muted">${R.money(R.vPaid(v))} paid</div></td></tr>`).join('') || '<tr><td colspan="7" class="empty">No reservations yet</td></tr>'}
           </tbody></table></div></div>
         <div class="panel"><div class="ph"><h2>Cottage calendar</h2><div class="sp"><button class="btn ghost sm" data-act="evShift" data-n="-7">← Week</button><button class="btn ghost sm" data-act="evShift" data-n="0">Today</button><button class="btn ghost sm" data-act="evShift" data-n="7">Week →</button></div></div>

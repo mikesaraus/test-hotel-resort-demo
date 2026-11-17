@@ -727,6 +727,7 @@
           <dt>Booked through</dt><dd>${esc(r.channel)}${R.sourceFee(r.channel) ? ` · ${R.sourceFee(r.channel)}% commission` : ''} · on ${R.fmtShort(r.created)}</dd>
           <dt>Arriving</dt><dd>around ${r.eta}</dd>
           ${r.notes ? `<dt>Notes</dt><dd>${esc(r.notes)}</dd>` : ''}
+          ${R.S.venueBookings.filter(v => v.resId === r.id && v.status !== 'cancelled').map(v => `<dt>Cottage</dt><dd><a href="#" data-act="openEvent" data-id="${v.id}">${esc(R.venue(v.venue).name)}</a>, ${R.fmtShort(v.date)} ${v.session === 'day' ? 'day' : 'night'} · ${v.status === 'arrived' ? 'used' : v.status === 'noshow' ? 'no-show' : 'reserved'}</dd>`).join('')}
           ${r.cancel ? `<dt>Cancelled</dt><dd>${R.fmtShort(r.cancel.date)} · ${esc(r.cancel.reason)}</dd>` : ''}</dl>
           ${open ? `<div class="row" style="margin-top:12px">${r.status === 'booked' ? `<button class="btn sm ghost warn-text" data-act="cancelRes" data-id="${r.id}">Cancel booking</button>${r.arrive < day ? `<button class="btn sm ghost" data-act="noShow" data-id="${r.id}">No-show</button>` : ''}` : ''}</div>` : ''}</div>
         <div class="stack">
@@ -756,7 +757,7 @@
       const history = `<div class="panel"><h2>History</h2>${hist.map(a => `<div class="list-item"><span class="small muted num nowrap">${R.fmtShort(a.date)} ${a.at}</span><div class="grow small"><b>${esc(a.action)}</b> ${esc(a.detail)}</div><span class="small muted">${esc(R.staff(a.user).name)}</span></div>`).join('') || '<p class="empty">Changes made in this demo appear here: who did what, and when.</p>'}</div>`;
 
       return `<div class="bk-head"><a class="btn ghost sm" href="#reservations">${R.icon('back')}Reservations</a>
-          <span class="row">${R.chip(r.status)}<span class="chip">${r.id}</span>${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}</span><div class="sp row">${R.can('book') ? `<button class="btn ghost sm" data-act="msgGuest" data-id="${r.id}">Message guest</button>` : ''}${main.join('')}</div></div>
+          <span class="row">${R.chip(r.status)}<span class="chip">${r.id}</span>${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}</span><div class="sp row">${R.can('till') && r.status === 'inhouse' ? `<button class="btn ghost sm" data-act="useCottage" data-id="${r.id}">Use a cottage</button>` : ''}${R.can('till') && open ? `<button class="btn ghost sm" data-act="newEvent" data-res="${r.id}">Reserve a cottage</button>` : ''}${R.can('book') ? `<button class="btn ghost sm" data-act="msgGuest" data-id="${r.id}">Message guest</button>` : ''}${main.join('')}</div></div>
         <div class="pulse pulse5">
           <div><b>${R.fmtShort(r.arrive)} → ${R.fmtShort(R.dep(r))}</b><span>${r.nights} night${r.nights > 1 ? 's' : ''}</span></div>
           <div><b>${r.room || '—'}</b><span>${esc(t.name)}</span></div>
