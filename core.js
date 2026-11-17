@@ -1,6 +1,6 @@
 /* Core: state, business date, roles & permissions, routing, helpers, dialogs, search, audit log */
 (function () {
-  const KEY = 'camsair-pms-mockup-v3';
+  const KEY = 'camsair-pms-mockup-v4';
   const { addDays, daysBetween, realToday } = R.util;
   R.views = {};
   R.act = {};
@@ -8,7 +8,7 @@
   // ---------- state ----------
   // Data is kept across days. The business date only moves when the night audit is run.
   R.load = function () {
-    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 3) { R.S = R.migrate(s); return; } } catch (e) { /* fall through */ }
+    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.v === 4) { R.S = R.migrate(s); return; } } catch (e) { /* fall through */ }
     R.S = R.migrate(R.makeData()); R.save();
   };
   // bring older saved data up to date (map layout, task history, modules)

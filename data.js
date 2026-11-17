@@ -119,7 +119,7 @@ window.R = window.R || {};
     const towns = ['Cagayan de Oro', 'Cagayan de Oro', 'Cagayan de Oro', 'Iligan City', 'Iligan City', 'Initao', 'Naawan', 'Manticao', 'Bukidnon', 'Manila', 'Cebu', 'Davao', 'Ozamiz', 'Abroad (balikbayan)'];
     const tags = ['', '', '', 'VIP', 'Repeat guest', 'Birthday', 'Senior citizen', 'Allergy: seafood', 'Late arrival', 'Anniversary'];
     const guests = [];
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 380; i++) {
       const f = pick(first), l = pick(last);
       guests.push({
         id: 'G' + (1000 + i), name: f + ' ' + l,
@@ -161,7 +161,7 @@ window.R = window.R || {};
     });
 
     rooms.forEach(room => {
-      let d = addDays(bd, -int(8, 14));
+      let d = addDays(bd, -int(58, 64));
       const end = addDays(bd, 30);
       while (d < end) {
         d = addDays(d, int(0, 2) + (rnd() < 0.45 ? int(2, 6) : 0));
@@ -212,7 +212,7 @@ window.R = window.R || {};
         r.status = 'cancelled'; r.cancel = { date: addDays(r.created, int(0, 3)) > bd ? bd : addDays(r.created, int(0, 3)), reason: pick(['Guest changed plans', 'Weather', 'Found cheaper elsewhere']) };
         if (paid) r.folio.push({ id: L(), date: r.cancel.date, desc: 'Cancellation: deposit kept (non-refundable)', dept: 'Rooms', kind: 'fee', amount: paid });
         r.room = null;
-      } else if (r.status === 'checkedout' && r.arrive >= addDays(bd, -10) && rnd() < 0.05) {
+      } else if (r.status === 'checkedout' && r.arrive >= addDays(bd, -40) && rnd() < 0.04) {
         r.status = 'noshow'; r.reg = null;
         r.payments = r.payments.slice(0, 1);
         r.folio = r.payments.length ? [{ id: L(), date: r.arrive, desc: 'No-show: deposit kept', dept: 'Rooms', kind: 'fee', amount: r.payments[0].amount }] : [];
@@ -310,6 +310,28 @@ window.R = window.R || {};
         { id: 'X9', cat: 'Fees', name: 'Day-use room until 5 pm', price: 1500, shared: true }
       ]
     };
+    // past day-tour and restaurant sales (closed shifts), busier on weekends
+    const pastSales = [];
+    const pm = ['cash', 'cash', 'cash', 'gcash', 'gcash', 'maya', 'card'];
+    for (let i = 60; i >= 1; i--) {
+      const date = addDays(bd, -i), dow = new Date(date + 'T12:00:00').getDay(), wk = dow === 0 || dow === 6;
+      const n = wk ? int(8, 14) : int(2, 6);
+      for (let j = 0; j < n; j++) {
+        const pax = { adult: int(1, 7), child: int(0, 4), senior: rnd() < 0.25 ? 1 : 0, toddler: rnd() < 0.2 ? 1 : 0 };
+        const cot = rnd() < 0.55 ? [pick(dayuse.cottages.slice(0, 9)).id] : [];
+        const items = rnd() < 0.5 ? [{ id: pick(['X1', 'X2', 'X3', 'X4', 'X6', 'X8']), qty: int(1, 3) }] : [];
+        const session = rnd() < 0.8 ? 'day' : 'night', t = { session, pax, cottages: cot, items };
+        const c = R.calcTicket(t, dayuse), method = pick(pm);
+        pastSales.push({ id: 'SP' + i + '-' + j, kind: 'daytour', or: 'OR-' + String(++orSeq).padStart(6, '0'), date, at: (8 + Math.floor(j * 9 / n)) + ':' + String(int(0, 5) * 10).padStart(2, '0'),
+          shift: 'SH-' + date, cashier: pick(['S3', 'S15']), session, pax, cottages: cot, items, name: '', calc: c, method, amount: c.total, tendered: c.total, change: 0, ref: method === 'gcash' || method === 'maya' ? '1' + int(100000000, 999999999) + int(100, 999) : '', seniorId: pax.senior ? 'OSCA-' + int(10000, 99999) : '' });
+      }
+      for (let j = 0, m = wk ? int(6, 10) : int(2, 5); j < m; j++) {
+        const its = [[pick(['M3', 'M4', 'M5', 'M6', 'M8']), int(1, 2)], [pick(['M9', 'M10', 'M11', 'M12']), int(1, 4)]];
+        const c = R.taxCalc(its.map(([id, qty]) => { const mm = menu.find(x => x.id === id); return { name: mm.name, qty, price: mm.price, share: 0 }; }));
+        pastSales.push({ id: 'SF' + i + '-' + j, kind: 'fnb', outlet: pick(outlets.slice(0, 2)), or: 'OR-' + String(++orSeq).padStart(6, '0'), date, at: pick(['12:15', '13:40', '18:30', '19:45', '20:30']), shift: 'SH-' + date, cashier: 'S3', diners: 2, seniors: 0, calc: { heads: 2, ...c }, method: pick(pm), amount: c.total, tendered: c.total, change: 0, ref: '', seniorId: '', name: '' });
+      }
+    }
+
     const shift = { id: 'SH1', cashier: 'S3', date: bd, opened: '07:45', float: 2000 };
     const seedSales = [
       ['08:12', { adult: 4, child: 3, senior: 1, toddler: 1 }, ['K1'], [['X1', 2]], 'cash', 3000, 'Pacana family'],
@@ -363,11 +385,12 @@ window.R = window.R || {};
       }
     });
 
+    sales.push(...pastSales.reverse());
     const cottageUse = {};
-    sales.forEach(s => (s.cottages || []).forEach(id => { cottageUse[id] = s.id; }));
+    sales.filter(s => s.date === bd).forEach(s => (s.cottages || []).forEach(id => { cottageUse[id] = s.id; }));
 
     return {
-      v: 3, bd, user: 'S3', seq: 9000, orSeq,
+      v: 4, bd, user: 'S3', seq: 9000, orSeq,
       roomTypes, seasons, sources, zones, rooms, guests, reservations, staff,
       activities, actBookings, menu, outlets, tasks, dayuse, sales, cottageUse, groups, venueBookings, roster,
       shift, shiftsClosed: [], dailyReports: [], audit: [],
