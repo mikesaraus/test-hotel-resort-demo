@@ -234,9 +234,14 @@
     const id = R.current(), v = R.views[id];
     renderNav(id);
     const u = R.user();
-    document.getElementById('userBtn').innerHTML = `<span class="avatar sm">${R.initials(u.name)}</span><span class="who"><b>${esc(u.name)}</b><small>${esc(R.ROLES[u.roleKey].name)}</small></span>${R.icon('chev')}`;
+    const ub = document.getElementById('userBtn');
+    ub.innerHTML = `<span class="avatar" aria-hidden="true">${R.initials(u.name)}</span><span class="who"><b>${esc(u.name)}</b><small>${esc(R.ROLES[u.roleKey].name)}</small></span><span class="chev" aria-hidden="true">${R.icon('chev')}</span>`;
+    ub.title = 'Signed in as ' + u.name + '. Click to switch user';
     const late = R.bd() < realToday();
-    document.getElementById('bizDate').innerHTML = `${R.icon('calendar')}<span><small>Business date</small><b>${R.fmt(R.bd())}</b></span>${late ? '<span class="chip amber">Night audit due</span>' : ''}`;
+    const bz = document.getElementById('bizDate');
+    bz.className = 'biz-date' + (late ? ' due' : '');
+    bz.innerHTML = `<span class="top-ico" aria-hidden="true">${R.icon(late ? 'alert' : 'calendar')}</span><span><small>${late ? 'Night audit due' : 'Business date'}</small><b>${R.fmt(R.bd())}</b></span>`;
+    bz.setAttribute('aria-label', `Business date ${R.fmt(R.bd())}${late ? ', night audit due' : ''}. Open night audit`);
     document.getElementById('pageTitle').textContent = typeof v.title === 'function' ? v.title() : v.title;
     document.getElementById('pageHint').textContent = v.hint || '';
     const el = document.getElementById('view');
