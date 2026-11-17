@@ -163,7 +163,7 @@
   R.statement = function (r) {
     const g = R.guest(r.guestId), row = (a, b, c) => `<div class="rc-row ${c || ''}"><span>${a}</span><span class="num">${b}</span></div>`;
     R.modal('Guest statement', `<div class="receipt">
-      <div class="rc-head"><strong>CAMSAIR</strong><span class="brand-rule" aria-hidden="true"><i></i>RESORT<i></i></span><small>Brgy. San Pedro, Initao, Misamis Oriental<br>VAT Reg. TIN 000-000-000-00000 (sample)</small></div>
+      <div class="rc-head"><strong>CAMSAIR</strong><span class="brand-rule" aria-hidden="true"><i></i>RESORT<i></i></span><small>Brgy. San Pedro, Initao, Misamis Oriental${R.S.modules.bir ? '<br>VAT Reg. TIN 000-000-000-00000 (sample)' : ''}</small></div>
       ${row('Guest', esc(g.name))}${row('Booking', r.id)}${row('Room', r.room || '—')}${row('Stay', `${R.fmtShort(r.arrive)} → ${R.fmtShort(R.dep(r))}`)}<hr>
       ${R.lines(r).map(f => row(`${R.fmtShort(f.date)} ${esc(f.desc)}`, R.peso(f.amount))).join('')}<hr>
       ${row('<b>Total charges</b>', '<b>' + R.peso(R.total(r)) + '</b>', 'rc-total')}

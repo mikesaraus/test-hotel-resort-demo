@@ -259,7 +259,8 @@
     title: 'Reports',
     hint: 'How the resort is doing. Figures update live as bookings, charges and payments happen.',
     render() {
-      const tabs = [['health', 'Business health'], ['daily', 'Daily manager report'], ['revenue', 'Revenue'], ['daytour', 'Day tour'], ['ops', 'Operations'], ['compliance', 'BIR & compliance']];
+      const tabs = [['health', 'Business health'], ['daily', 'Daily manager report'], ['revenue', 'Revenue'], ['daytour', 'Day tour'], ['ops', 'Operations']].concat(R.S.modules.bir ? [['compliance', 'BIR & compliance']] : []);
+      if (!tabs.some(t => t[0] === rTab)) rTab = 'health';
       return `<div class="tabs no-print">${tabs.map(([k, l]) => `<button class="${rTab === k ? 'on' : ''}" aria-pressed="${rTab === k}" data-act="rTab" data-tab="${k}">${l}</button>`).join('')}</div>
         ${{ health, daily, revenue, daytour, ops, compliance }[rTab]()}`;
     }

@@ -15,7 +15,7 @@ This file lists what the real build still needs.
 | Cashier | Shifts, cash count, X / Z reading, receipt register in number order |
 | Rooms | Property map and housekeeping board (occupied / vacant kept apart from dirty / clean / inspected), out of order, Undo for quick mistakes. Managers edit buildings, map layout, rooms, room types, cottages and entrance fees in Settings |
 | Tasks | Guest requests and repairs with any status change, waiting-on-parts with an expected date, overdue flags, history and updates |
-| Management | Night audit and business date, reports (business health, daily manager report, revenue, day tour, operations, BIR & compliance), settings, roles and permissions, audit log. Staff roster is built but switched off (Settings → Modules) |
+| Management | Night audit and business date, reports (business health, daily manager report, revenue, day tour, operations), settings, roles and permissions, audit log. Staff roster is built but switched off (Settings → Modules) |
 | Add-ons | Restaurant & bar point of sale, activities & spa, guest app (switch on in Settings → Modules) |
 
 ## For the real build
@@ -24,7 +24,10 @@ This file lists what the real build still needs.
 1. **Direct booking page** with GCash / Maya / card deposits through a payment gateway (PayMongo or Xendit). Biggest money lever: every booking moved off Agoda / Booking.com keeps about 15% more.
 2. **Channel manager connection** (Agoda, Booking.com) so availability and rates stay in sync both ways. Brings back "close a night on booking sites" (stop-sell).
 3. **Works offline** at the front desk and sales counters, and syncs when the internet is back.
-4. **Accounting export** (QuickBooks, Xero or Excel) and BIR-ready sales and receipt books. Get the BIR Permit to Use before the system issues official receipts.
+4. **Accounting export** (QuickBooks, Xero or Excel).
+
+### On hold (built in the mockup, hidden for now)
+- **BIR & compliance:** VAT summary, receipt number range, senior / PWD sales list, TIN on receipts. Switched off with `modules.bir`; BIR Permit to Use needed before the system issues official receipts.
 5. **Company accounts (city ledger)**: companies that pay later by invoice, with unpaid amounts by age.
 6. **Rate plans and packages**: room only vs with breakfast, weekend minimum stay, promo codes; senior / PWD discount on room bills.
 7. **Automatic guest messages** by SMS / Messenger / email using the templates in the mockup.

@@ -56,7 +56,7 @@
     const row = (a, b, cls) => `<div class="rc-row ${cls || ''}"><span>${a}</span><span class="num">${b}</span></div>`;
     R.modal('Receipt ' + s.or, `<div class="receipt">
       <div class="rc-head"><strong>CAMSAIR</strong><span class="brand-rule" aria-hidden="true"><i></i>RESORT<i></i></span>
-      <small>Brgy. San Pedro, Initao, Misamis Oriental<br>VAT Reg. TIN 000-000-000-00000 (sample)</small></div>
+      <small>Brgy. San Pedro, Initao, Misamis Oriental${R.S.modules.bir ? '<br>VAT Reg. TIN 000-000-000-00000 (sample)' : ''}</small></div>
       ${row('Official receipt', s.or)}${row(R.fmt(s.date) + ' · ' + s.at, s.kind === 'fnb' ? esc(s.outlet) : s.session === 'day' ? 'Day tour' : 'Night swim')}
       ${row('Cashier', esc(R.staff(s.cashier).name))}${s.name ? row('Guest', esc(s.name)) : ''}
       <hr>${c.lines.map(l => row(`${l.qty} × ${esc(l.name)}<br><small>@ ${R.peso(l.price)}</small>`, R.peso(l.amount))).join('')}
