@@ -387,6 +387,34 @@ tr.late td:first-child{box-shadow:inset 3px 0 0 var(--hibiscus)}
 .legend span{display:flex;align-items:center;gap:6px}
 .legend > span > i{width:14px;height:14px;border-radius:4px;border:2px solid;display:inline-block}
 
+/* map edit mode */
+.edit-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#FFF6E5;box-shadow:inset 3px 0 0 var(--gold),var(--edge);border-radius:var(--r-m);padding:10px 14px;margin-bottom:12px}
+.edit-bar .grow{flex:1;min-width:220px}
+.zone.editing,.feature.editing{outline:2px dashed #D9BE85;outline-offset:2px}
+.zone-tools{display:inline-flex;gap:4px;margin-left:auto}
+.zone h3 .zone-tools{font-weight:600}
+.feature.editing{position:relative}
+.feature .zone-tools{position:absolute;right:10px;top:10px}
+.tool{border:1px solid #D6C8B3;background:#fff;color:var(--ink);border-radius:var(--r-s);font:600 12px var(--body);min-width:28px;height:26px;padding:0 8px;cursor:pointer}
+.tool:hover:not(:disabled){border-color:var(--line-strong);background:#FAF5EC}
+.tool:disabled{opacity:.4;cursor:default}
+.tile.edit-tile{background:#fff;border:2px solid #D6C8B3;color:var(--ink)}
+.tile.edit-tile:hover{border-color:var(--lagoon)}
+.tile.add-tile{background:transparent;border:2px dashed #C9BBA6;color:var(--ink-3);font-size:22px;justify-content:center;align-items:center}
+.tile.add-tile:hover{border-color:var(--lagoon);color:var(--lagoon)}
+.price-box{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;background:var(--bg);border-radius:var(--r-m);padding:12px 14px;margin-top:12px}
+.price-box small{display:block;font-size:12px;color:var(--ink-3)}
+.price-box b{font-size:22px;margin-right:6px}
+/* front desk: tonight's prices */
+.rate-row{display:grid;grid-template-columns:1fr auto 84px;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid #EFE7DA;padding:8px 4px;font:inherit;color:inherit}
+button.rate-row{cursor:pointer}
+button.rate-row:hover{background:#FAF5EC}
+.rate-row:last-of-type{border-bottom:0}
+.rate-row b.num{text-align:right}
+.rate-row small{display:block;font-size:12px;color:var(--ink-3)}
+.rate-left{font-size:12px;font-weight:600;color:var(--palm)}
+.rate-left.full{color:var(--hibiscus)}
+
 /* tape chart */
 .tape{overflow:auto;border:0;box-shadow:var(--edge);border-radius:var(--r-m);background:#fff;max-height:72vh;overscroll-behavior-x:contain}
 .tape table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}

@@ -349,7 +349,7 @@
        ['Kristine', 'A checked-in guest wants a kubo: open their booking, press Use a cottage. Their people get in free, the kubo goes on the room bill. Try voucher CAMSAIR10.'],
        ['Aira (room attendant)', 'Mark a room cleaned. Then sign in as Lorna (head housekeeper) to inspect it.'],
        ['Jun (night auditor)', 'Run the night audit: no-shows, room nights posted, business date moves to tomorrow.'],
-       ['Rosalie (manager)', 'Settings → Property layout: add a building and rooms, move blocks on the map. Settings → Rooms & rates: add a room type.'],
+       ['Rosalie (manager)', 'Room status → Property map → Edit map: click a room to renumber it, change its type or price; + adds a room. Front desk shows tonight\'s prices straight away.'],
        ['Rodel (maintenance)', 'Tasks: the aircon in 205 is waiting on parts and overdue. Change a status from the list, or open a task to add an update.'],
        ['Teresa (owner)', 'Settings → Modules: switch on Staff roster (off for now).'],
        ['Joy (accountant)', 'View only: try to change anything.']].map(([w, t]) => `<div class="list-item"><span class="chip">${esc(w)}</span><div class="grow small">${esc(t)}</div></div>`).join('')}

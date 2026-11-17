@@ -16,6 +16,7 @@
       <div class="row" style="margin-bottom:12px"><span class="chip ${st.occ ? 'ink' : ''}">${st.occ ? 'Occupied' : 'Vacant'}</span>${room.ooo ? R.chip('ooo') : R.chip(room.hk)}<span class="chip">${st.code}</span></div>
       <dl class="kv">
         <dt>Type</dt><dd>${esc(t.name)} · ${t.size} · ${esc(t.bed)} · sleeps ${t.cap}</dd>
+        <dt>Price tonight</dt><dd>${R.money(R.priceOn(room.type, bd()))}${R.seasonOn(bd()) ? ' · ' + esc(R.seasonOn(bd()).name) : ''}</dd>
         <dt>Guest now</dt><dd>${ih ? `<a href="#" data-act="openRes" data-id="${ih.id}">${esc(R.guest(ih.guestId).name)}</a> until ${R.fmt(R.dep(ih))}` : '—'}</dd>
         <dt>Next arrival</dt><dd>${na ? `<a href="#" data-act="openRes" data-id="${na.id}">${esc(R.guest(na.guestId).name)}</a> on ${R.fmt(na.arrive)}` : 'None booked'}</dd>
         <dt>Attendant</dt><dd>${R.can('inspect') ? `<select id="rmAtt" aria-label="Attendant"><option value="">Unassigned</option>${attendants().map(s => `<option value="${s.id}" ${room.attendant === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>` : esc(R.staff(room.attendant).name)}</dd>
@@ -71,6 +72,47 @@
   // ---------- Rooms view ----------
   let rView = null, rFilter = '';
   R.act.rView = d => { rView = d.v; R.render(); };
+  let rEdit = false;
+  R.act.mapEdit = d => { if (!R.need('settings')) return; rEdit = d.on === '1'; rView = 'map'; R.render(); };
+  // edit a building or area straight from the map
+  R.act.zoneEdit = d => {
+    const z = R.S.zones.find(x => x.id === d.id), feat = z.kind === 'feature';
+    R.modal(`Edit ${feat ? 'area' : 'building'}`, `<div class="form">
+      <label class="field full">Name<input id="zeN" value="${esc(z.name)}"></label>
+      <label class="field">Width on the map<select id="zeS">${[[2, 'Small (⅓)'], [3, 'Half'], [4, 'Large (⅔)'], [6, 'Full width']].map(([v, l]) => `<option value="${v}" ${v === z.span ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      ${feat ? `<label class="field">Looks like<select id="zeF">${[['pool', 'Pool'], ['garden', 'Garden'], ['beach', 'Beach'], ['parking', 'Parking'], ['other', 'Other']].map(([k, l]) => `<option value="${k}" ${k === z.style ? 'selected' : ''}>${l}</option>`).join('')}</select></label>` : `<div class="field"><span>Rooms</span><b>${R.S.rooms.filter(r => r.zone === z.id).length}</b></div>`}</div>
+      <div class="foot"><button class="btn ghost warn-text" data-act="delZone" data-id="${z.id}">Remove</button><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="zeGo">Save</button></div>`, b => {
+      b.querySelector('#zeGo').onclick = () => {
+        const n = b.querySelector('#zeN').value.trim();
+        if (n.length < 2) return R.toast('Enter a name', 'warn');
+        Object.assign(z, { name: n, span: +b.querySelector('#zeS').value }, feat ? { style: b.querySelector('#zeF').value } : {});
+        R.log('Map', `${z.name}: name, width${feat ? ', look' : ''} saved`); R.closeModal(); R.rerender(); R.toast('Saved');
+      };
+    });
+  };
+  // edit one room: number, type, building and its price
+  R.act.editRoom = d => {
+    if (!R.need('settings')) return;
+    const room = R.room(d.no), t = R.type(room.type), day = bd(), s = R.seasonOn(day);
+    const open = R.S.reservations.filter(r => r.room === room.no && (r.status === 'booked' || r.status === 'inhouse')).length;
+    R.modal('Edit room ' + room.no, `<div class="form">
+      <label class="field">Room number<input id="erN" value="${esc(room.no)}"></label>
+      <label class="field">Building<select id="erZ">${R.S.zones.filter(z => z.kind === 'building').map(z => `<option value="${z.id}" ${z.id === room.zone ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></label>
+      <label class="field full">Room type<select id="erT">${R.S.roomTypes.map(x => `<option value="${x.id}" ${x.id === room.type ? 'selected' : ''}>${esc(x.name)} · sleeps ${x.cap} · ${R.money(x.base)}</option>`).join('')}</select></label></div>
+      <div class="price-box"><div><small>Price tonight</small><b>${R.money(R.priceOn(room.type, day))}</b>${s ? `<span class="chip">${esc(s.name)} ${s.pct > 0 ? '+' : ''}${s.pct}%</span>` : ''}</div>
+        <label class="field">Base rate for every ${esc(t.name)} (₱)<input id="erB" type="number" min="1" value="${t.base}"></label></div>
+      <p class="small muted" style="margin-top:6px">Prices are set per room type, so every ${esc(t.name)} sells at the same rate. Seasons raise or lower it automatically. Front desk and new bookings use it straight away.${open ? ` This room has ${open} booking(s) ahead: the type can only change once they are moved.` : ''}</p>
+      <div class="foot"><button class="btn ghost warn-text" data-act="delRoom" data-no="${esc(room.no)}">Delete room</button><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="erGo">Save</button></div>`, b => {
+      b.querySelector('#erGo').onclick = () => {
+        const v = q => b.querySelector(q).value.trim(), was = room.no;
+        if (v('#erT') !== room.type) { R.act.setRoom({ no: was, f: 'type' }, { value: v('#erT') }); if (room.type !== v('#erT')) return; }
+        if (v('#erZ') !== room.zone) R.act.setRoom({ no: was, f: 'zone' }, { value: v('#erZ') });
+        if (+v('#erB') !== R.type(room.type).base && room.type === t.id) R.act.setType({ id: t.id, f: 'base' }, { value: v('#erB') });
+        if (v('#erN') !== was) { R.act.setRoom({ no: was, f: 'no' }, { value: v('#erN') }); if (room.no === was) return; }
+        R.closeModal(); R.rerender(); R.toast(`Room ${room.no} saved`);
+      };
+    });
+  };
   R.act.rFilter = d => { rFilter = rFilter === d.f ? '' : d.f; R.render(); };
   R.views.rooms = {
     title: 'Room status',
@@ -87,7 +129,9 @@
       const legend = `<div class="legend">${[['inspected', 'Inspected (ready to sell)'], ['clean', 'Clean, not inspected'], ['dirty', 'Dirty'], ['ooo', 'Out of order']].map(([s, l]) => `<button class="chip ${rFilter === s ? 'ink' : ''} legend-btn" aria-pressed="${rFilter === s}" data-act="rFilter" data-f="${s}"><i class="st-${s}"></i>${l} · ${counts[s]}</button>`).join('')}
         <span class="muted small">Dark bar at the bottom = guest in room · "Arr" = arrival today</span></div>`;
 
-      if (rView === 'map') return toggle + legend + R.mapHTML({ filter: rFilter }) + (R.can('settings') ? '<p class="small muted" style="margin-top:8px">Change buildings, rooms and the map in <a href="#settings">Settings → Property layout</a>.</p>' : '');
+      if (rView === 'map' && rEdit && R.can('settings')) return toggle + `<div class="edit-bar">${R.icon('gear')}<div class="grow"><b>Editing the property map</b><div class="small">Click a room to renumber it, change its type, building or price. Use + to add rooms. Changes apply straight away and are logged.</div></div>
+          <button class="btn sm ghost" data-act="addZone" data-kind="feature">Add area</button><button class="btn sm ghost" data-act="addZone" data-kind="building">${R.icon('plus')}Add building</button><button class="btn sm" data-act="mapEdit" data-on="0">Done</button></div>` + R.mapHTML({ edit: true });
+      if (rView === 'map') return toggle.replace(/<\/div>\s*$/, `${R.can('settings') ? `<button class="btn sm ghost" style="margin-left:auto" data-act="mapEdit" data-on="1">${R.icon('gear')}Edit map</button>` : ''}</div>`) + legend + R.mapHTML({ filter: rFilter });
 
       // housekeeping board: one column per attendant; arrivals today first
       const prio = r => { const na = nextArrival(r.no); return na && na.arrive === day ? 0 : R.inhouseIn(r.no) ? 2 : 1; };
@@ -271,13 +315,16 @@
       const dim = o.filter && st.cls !== o.filter ? 'dim' : '';
       const villa = ['VIL', 'BKD'].includes(room.type) ? 'villa' : '';
       if (o.preview) return `<span class="tile st-${st.cls} ${villa}"><b>${esc(room.no)}</b></span>`;
+      if (o.edit) return `<button class="tile edit-tile ${villa}" data-act="editRoom" data-no="${esc(room.no)}" aria-label="Edit room ${esc(room.no)}, ${esc(R.type(room.type).name)}"><b>${esc(room.no)}</b><i>${esc(R.type(room.type).name.split(' ')[0])}</i></button>`;
       return `<button class="tile st-${st.cls} ${st.occ ? 'occ' : ''} ${villa} ${dim}" data-act="openRoom" data-no="${esc(room.no)}" aria-label="Room ${esc(room.no)}, ${st.label}${arrToday ? ', arrival today' : ''}">
         <b>${esc(room.no)}</b><i>${st.code}${arrToday ? ' · Arr' : ''}</i></button>`;
     };
+    const i0 = z => R.S.zones.indexOf(z);
+    const tools = z => `<span class="zone-tools"><button class="tool" data-act="zoneEdit" data-id="${z.id}" aria-label="Edit ${esc(z.name)}">Edit</button><button class="tool" data-act="moveZone" data-id="${z.id}" data-n="-1" ${i0(z) ? '' : 'disabled'} aria-label="Move ${esc(z.name)} earlier">↑</button><button class="tool" data-act="moveZone" data-id="${z.id}" data-n="1" ${i0(z) < R.S.zones.length - 1 ? '' : 'disabled'} aria-label="Move ${esc(z.name)} later">↓</button></span>`;
     const block = z => {
-      if (z.kind === 'feature') return `<div class="feature f-${z.style || 'other'}" style="--span:${z.span}" ${o.preview ? '' : 'aria-hidden="true"'}><span>${esc(z.name)}</span></div>`;
+      if (z.kind === 'feature') return `<div class="feature f-${z.style || 'other'} ${o.edit ? 'editing' : ''}" style="--span:${z.span}" ${o.preview || o.edit ? '' : 'aria-hidden="true"'}><span>${esc(z.name)}</span>${o.edit ? tools(z) : ''}</div>`;
       const rs = R.S.rooms.filter(r => r.zone === z.id);
-      return `<div class="zone" style="--span:${z.span}"><h3>${esc(z.name)} <span>${o.preview ? rs.length + ' rooms' : rs.filter(r => R.inhouseIn(r.no)).length + '/' + rs.length + ' occupied'}</span></h3><div class="tiles">${rs.map(tile).join('') || '<span class="small muted">No rooms yet</span>'}</div></div>`;
+      return `<div class="zone ${o.edit ? 'editing' : ''}" style="--span:${z.span}"><h3>${esc(z.name)} ${o.edit ? tools(z) : `<span>${o.preview ? rs.length + ' rooms' : rs.filter(r => R.inhouseIn(r.no)).length + '/' + rs.length + ' occupied'}</span>`}</h3><div class="tiles">${rs.map(tile).join('') || (o.edit ? '' : '<span class="small muted">No rooms yet</span>')}${o.edit ? `<button class="tile add-tile" data-act="addRoom" data-zone="${z.id}" aria-label="Add a room to ${esc(z.name)}">+</button>` : ''}</div></div>`;
     };
     return `<div class="bay ${o.preview ? 'preview' : ''}"><div class="zones">${R.S.zones.map(block).join('')}</div><span class="sea-label">${esc(R.S.propertyName || 'Camsair Resort')} grounds</span></div>`;
   };

@@ -144,14 +144,20 @@
     } else if (d.f === 'zone') { R.log('Room moved', `${room.no} → ${R.S.zones.find(z => z.id === v).name}`); room.zone = v; }
     R.rerender(); R.toast('Saved');
   };
-  R.act.addRoom = () => {
+  R.act.addRoom = d => {
     if (!guard('settings')) return;
-    const bs = R.S.zones.filter(z => z.kind === 'building');
+    d = d || {};
+    const bs = R.S.zones.filter(z => z.kind === 'building'), zone = d.zone || (bs[0] || {}).id;
+    // next number after the highest room in that building (e.g. 108 → 109, V3 → V4)
+    const last = R.S.rooms.filter(r => r.zone === zone).map(r => r.no.match(/^([A-Za-z-]*)(\d+)$/)).filter(Boolean).sort((a, b) => +a[2] - +b[2]).pop();
+    let next = last ? last[1] + String(+last[2] + 1).padStart(last[2].length, '0') : '';
+    while (next && R.room(next)) { const m = next.match(/^([A-Za-z-]*)(\d+)$/); next = m[1] + String(+m[2] + 1).padStart(m[2].length, '0'); }
+    const typeOf = (R.S.rooms.find(r => r.zone === zone) || {}).type;
     R.modal('Add rooms', `<div class="form">
-      <label class="field">Room number<input id="arN" placeholder="e.g. 109" autofocus></label>
+      <label class="field">Room number<input id="arN" placeholder="e.g. 109" value="${esc(next)}" autofocus></label>
       <label class="field">How many<input id="arQ" type="number" min="1" max="20" value="1"></label>
-      <label class="field">Room type<select id="arT">${R.S.roomTypes.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></label>
-      <label class="field">Building<select id="arZ">${bs.map(z => `<option value="${z.id}">${esc(z.name)}</option>`).join('')}</select></label></div>
+      <label class="field">Room type<select id="arT">${R.S.roomTypes.map(t => `<option value="${t.id}" ${t.id === typeOf ? 'selected' : ''}>${esc(t.name)} · ${R.money(t.base)}</option>`).join('')}</select></label>
+      <label class="field">Building<select id="arZ">${bs.map(z => `<option value="${z.id}" ${z.id === zone ? 'selected' : ''}>${esc(z.name)}</option>`).join('')}</select></label></div>
       <p class="small muted" style="margin-top:8px">Adding more than one numbers them in order: 109, 110, 111. New rooms start as inspected and ready to sell.</p>
       <p class="small warn-text" id="arErr" style="min-height:1.4em"></p>
       <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="arGo">Add</button></div>`, b => {
