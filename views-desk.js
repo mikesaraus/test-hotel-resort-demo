@@ -163,7 +163,7 @@
   R.statement = function (r) {
     const g = R.guest(r.guestId), row = (a, b, c) => `<div class="rc-row ${c || ''}"><span>${a}</span><span class="num">${b}</span></div>`;
     R.modal('Guest statement', `<div class="receipt">
-      <div class="rc-head"><strong>CAMSAIR</strong><span class="brand-rule" aria-hidden="true"><i></i>RESORT<i></i></span><small>Brgy. San Pedro, Initao, Misamis Oriental${R.S.modules.bir ? '<br>VAT Reg. TIN 000-000-000-00000 (sample)' : ''}</small></div>
+      <div class="rc-head"><strong>CAMSAIR</strong><span class="brand-rule" aria-hidden="true"><i></i>RESORT<i></i></span><small>Brgy. San Pedro, Initao, Misamis Oriental</small></div>
       ${row('Guest', esc(g.name))}${row('Booking', r.id)}${row('Room', r.room || '—')}${row('Stay', `${R.fmtShort(r.arrive)} → ${R.fmtShort(R.dep(r))}`)}<hr>
       ${R.lines(r).map(f => row(`${R.fmtShort(f.date)} ${esc(f.desc)}`, R.peso(f.amount))).join('')}<hr>
       ${row('<b>Total charges</b>', '<b>' + R.peso(R.total(r)) + '</b>', 'rc-total')}
@@ -686,16 +686,79 @@
     }
   };
 
-  // ---------- arrivals prep list (print for housekeeping and the kitchen) ----------
+  // ---------- arrivals list: today or tomorrow, grouped by time, printable for housekeeping, kitchen and gate ----------
+  let arrDay = 'today', arrF = 'all';
+  const ready = r => {
+    if (r.status === 'inhouse') return ['done', '✓', 'Checked in'];
+    if (!r.room) return ['bad', '!', 'No room assigned'];
+    const room = R.room(r.room);
+    if (room.ooo) return ['bad', '!', 'Out of order'];
+    if (room.hk === 'dirty') return ['warn', '!', 'Needs cleaning'];
+    if (room.hk === 'clean') return ['mid', '•', 'Clean, not inspected'];
+    return ['ok', '✓', 'Ready'];
+  };
+  const slot = t => t < '12:00' ? 'Morning' : t < '17:00' ? 'Afternoon' : 'Evening';
+  R.act.arrDay = d => { arrDay = d.v; R.act.prepList(); };
+  R.act.arrF = d => { arrF = d.v; R.act.prepList(); };
+  R.act.arrOpen = d => { R.closeModal(); d.kind === 'ev' ? R.act.openEvent({ id: d.id }) : R.go('booking', d.id); };
   R.act.prepList = () => {
-    const day = bd();
-    const L = R.S.reservations.filter(r => r.arrive === day && (r.status === 'booked' || r.status === 'inhouse')).sort((a, b) => a.eta.localeCompare(b.eta));
-    const V = R.S.venueBookings.filter(v => v.date === day && v.status !== 'cancelled');
-    R.modal('Arrivals list, ' + R.fmt(day), `<div class="print-sheet"><p class="small muted" style="margin-bottom:8px">${L.length} room arrival(s), ${V.length} cottage / event group(s). Print for housekeeping, the kitchen and the gate.</p>
-      <table><thead><tr><th>ETA</th><th>Room</th><th>Guest</th><th>Pax</th><th>Room status</th><th>Notes</th><th class="right">Due</th></tr></thead><tbody>
-      ${L.map(r => { const g = R.guest(r.guestId), st = r.room ? R.roomState(R.room(r.room)) : null; return `<tr><td>${r.eta}</td><td><b>${r.room || '—'}</b></td><td>${esc(g.name)}${r.group ? `<div class="small muted">${esc(R.group(r.group).name)}</div>` : ''}</td><td>${r.adults}+${r.children}</td><td class="small">${r.status === 'inhouse' ? 'Checked in' : st ? st.label : 'No room yet'}</td><td class="small">${[g.tag, g.prefs, r.notes].filter(Boolean).map(esc).join(' · ')}</td><td class="right num">${R.money(Math.max(0, R.expectedBalance(r)))}</td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">No room arrivals</td></tr>'}
-      ${V.map(v => `<tr><td>${v.eta}</td><td><b>${esc(R.venue(v.venue).name)}</b></td><td>${esc(v.name)}</td><td>${v.pax}</td><td class="small">${v.status === 'arrived' ? 'Arrived' : 'Reserved'}</td><td class="small">${[v.catering ? v.catering.name + ' × ' + v.pax : '', v.notes].filter(Boolean).map(esc).join(' · ')}</td><td class="right num">${R.money(Math.max(0, v.price - R.vPaid(v)))}</td></tr>`).join('')}
-      </tbody></table></div>
+    const day = arrDay === 'tomorrow' ? addDays(bd(), 1) : bd();
+    const rooms = R.S.reservations.filter(r => r.arrive === day && (r.status === 'booked' || r.status === 'inhouse'));
+    const cots = R.S.venueBookings.filter(v => v.date === day && (v.status === 'booked' || v.status === 'arrived'));
+    const notReady = rooms.filter(r => ['bad', 'warn'].includes(ready(r)[0])).length;
+    const guests = rooms.reduce((s, r) => s + r.adults + r.children, 0), cotGuests = cots.reduce((s, v) => s + v.pax, 0);
+    const collect = rooms.filter(r => r.status === 'booked').reduce((s, r) => s + Math.max(0, R.expectedBalance(r)), 0) + cots.filter(v => v.status === 'booked').reduce((s, v) => s + Math.max(0, v.price - R.vPaid(v)), 0);
+    // one list, rooms and cottage groups together, in arrival order
+    let L = rooms.map(r => ({ kind: 'room', t: r.eta, r })).concat(cots.map(v => ({ kind: 'ev', t: v.eta, v })));
+    if (arrF === 'pending') L = L.filter(x => x.kind === 'room' ? x.r.status === 'booked' : x.v.status === 'booked');
+    if (arrF === 'rooms') L = L.filter(x => x.kind === 'room');
+    if (arrF === 'cottages') L = L.filter(x => x.kind === 'ev');
+    L.sort((a, b) => a.t.localeCompare(b.t) || (a.kind === 'room' ? R.guest(a.r.guestId).name : a.v.name).localeCompare(b.kind === 'room' ? R.guest(b.r.guestId).name : b.v.name));
+    const canIn = R.can('checkin');
+    const row = x => {
+      if (x.kind === 'room') {
+        const r = x.r, g = R.guest(r.guestId), t = R.type(r.type), [cls, ico, lbl] = ready(r), due = Math.max(0, R.expectedBalance(r));
+        const tags = [g.tag, r.group ? R.group(r.group).name : '', r.channel === 'Walk-in' ? '' : r.channel].filter(Boolean);
+        const notes = [g.prefs, r.notes && !r.notes.startsWith('Group:') ? r.notes : ''].filter(Boolean).join(' · ');
+        const action = r.status === 'inhouse' ? '' : canIn && R.canCheckIn(r)[0] ? `<button class="btn sm" data-act="checkIn" data-id="${r.id}">Check in</button>` : `<button class="btn sm ghost" data-act="arrOpen" data-id="${r.id}" aria-label="Open booking of ${esc(g.name)}">Open</button>`;
+        return `<li class="arr-row ${r.status === 'inhouse' ? 'is-done' : ''}">
+          <span class="arr-tick print-only" aria-hidden="true"></span>
+          <div class="arr-time"><b class="num">${esc(r.eta)}</b><small>ETA</small></div>
+          <div class="arr-main"><div class="arr-name"><b>${esc(g.name)}</b>${tags.map(x => `<span class="chip ${x === 'VIP' ? 'red' : x === g.tag ? 'amber' : ''}">${esc(x)}</span>`).join('')}</div>
+            <div class="arr-meta">${esc(t.name)} · ${r.nights} night${r.nights > 1 ? 's' : ''} · ${r.adults} adult${r.adults > 1 ? 's' : ''}${r.children ? `, ${r.children} child${r.children > 1 ? 'ren' : ''}` : ''}</div>
+            ${notes ? `<div class="arr-note">${R.icon('alert')}<span>${esc(notes)}</span></div>` : ''}</div>
+          <div class="arr-room"><b class="num">${r.room || '—'}</b><span class="rdy ${cls}"><i aria-hidden="true">${ico}</i>${lbl}</span></div>
+          <div class="arr-money num">${r.status === 'inhouse' ? '<span class="muted">—</span>' : due > 0 ? `<b>${R.money(due)}</b><small>to collect</small>` : '<span class="paid">Paid</span>'}</div>
+          <div class="arr-act no-print">${action}</div></li>`;
+      }
+      const v = x.v, c = R.venue(v.venue), bal = Math.max(0, v.price - R.vPaid(v));
+      const notes = [v.catering ? `${v.catering.name} × ${v.pax}` : '', v.notes, v.overNote ? 'Over capacity: ' + v.overNote : ''].filter(Boolean).join(' · ');
+      return `<li class="arr-row cot-row ${v.status === 'arrived' ? 'is-done' : ''}">
+        <span class="arr-tick print-only" aria-hidden="true"></span>
+        <div class="arr-time"><b class="num">${esc(v.eta)}</b><small>ETA</small></div>
+        <div class="arr-main"><div class="arr-name"><b>${esc(v.name)}</b><span class="chip teal">${v.session === 'day' ? 'Day tour' : 'Night swim'}</span>${v.resId ? '<span class="chip ink">Room guest</span>' : ''}</div>
+          <div class="arr-meta">${v.pax} guests · ${esc(v.phone)}</div>
+          ${notes ? `<div class="arr-note">${R.icon('alert')}<span>${esc(notes)}</span></div>` : ''}</div>
+        <div class="arr-room"><b>${esc(c.name.replace('Family cottage', 'Family'))}</b><span class="rdy ${v.status === 'arrived' ? 'done' : 'cot'}"><i aria-hidden="true">${v.status === 'arrived' ? '✓' : '⌂'}</i>${v.status === 'arrived' ? 'Arrived' : 'Reserved'}</span></div>
+        <div class="arr-money num">${v.status === 'arrived' ? '<span class="muted">—</span>' : bal > 0 ? `<b>${R.money(bal)}</b><small>+ entrance</small>` : '<span class="paid">Paid</span>'}</div>
+        <div class="arr-act no-print"><button class="btn sm ghost" data-act="arrOpen" data-kind="ev" data-id="${v.id}" aria-label="Open reservation of ${esc(v.name)}">Open</button></div></li>`;
+    };
+    const groups = ['Morning', 'Afternoon', 'Evening'].map(s => [s, L.filter(x => slot(x.t) === s)]).filter(([, l]) => l.length);
+    const seg = (act, cur, opts) => `<div class="seg" role="group">${opts.map(([v, l]) => `<button class="${cur === v ? 'on' : ''}" aria-pressed="${cur === v}" data-act="${act}" data-v="${v}"><b>${l}</b></button>`).join('')}</div>`;
+    const empty = !rooms.length && !cots.length
+      ? `<div class="arr-empty"><b>No arrivals ${arrDay === 'tomorrow' ? 'tomorrow' : 'today'}</b><p class="muted">Nobody is due to check in or arrive for a cottage.</p>${R.can('book') && arrDay === 'today' ? '<button class="btn sm" data-act="newBooking" data-ch="Walk-in">Book a walk-in room</button>' : ''}</div>`
+      : !L.length ? `<div class="arr-empty"><b>Nothing in this view</b><p class="muted">Everyone here has already arrived, or the filter hides them.</p><button class="btn sm ghost" data-act="arrF" data-v="all">Show all</button></div>` : '';
+    R.modal('Arrivals', `<div class="arr-sheet">
+      <div class="arr-head"><div><h3>${R.fmt(day)}</h3><p class="small muted">Camsair Resort · arrivals list for front desk, housekeeping, kitchen and gate · printed ${R.now()}</p></div>
+        <div class="row no-print">${seg('arrDay', arrDay, [['today', 'Today'], ['tomorrow', 'Tomorrow']])}</div></div>
+      <div class="arr-sum">
+        <div><b>${rooms.length}</b><span>room${rooms.length === 1 ? '' : 's'} · ${guests} guest${guests === 1 ? '' : 's'}</span></div>
+        <div class="${notReady ? 'warn' : ''}"><b>${notReady}</b><span>${notReady === 1 ? 'room' : 'rooms'} not ready</span></div>
+        <div><b>${cots.length}</b><span>cottage group${cots.length === 1 ? '' : 's'} · ${cotGuests} guests</span></div>
+        <div><b>${R.money(collect)}</b><span>to collect on arrival</span></div></div>
+      <div class="row no-print" style="margin:4px 0 6px">${seg('arrF', arrF, [['all', 'All'], ['pending', 'Not arrived yet'], ['rooms', 'Rooms'], ['cottages', 'Cottages']])}</div>
+      ${empty || groups.map(([s, l]) => `<section class="arr-group"><h4>${s} <span>${l.length}</span></h4><ul class="arr-list">${l.map(row).join('')}</ul></section>`).join('')}
+      <p class="arr-foot print-only">Tick each arrival when the room is ready and the guest is welcomed. Return this sheet to the front desk.</p></div>
       <div class="foot"><button class="btn ghost" data-act="closeModal">Close</button><button class="btn" data-act="printDoc">${R.icon('print')}Print</button></div>`, null, { wide: true });
   };
 

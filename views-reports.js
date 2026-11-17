@@ -1,4 +1,4 @@
-/* Reports: business health, daily manager report, revenue, day tour, operations, compliance (BIR / VAT). */
+/* Reports: business health, daily manager report, revenue, day tour, operations. */
 (function () {
   const { addDays, daysBetween } = R.util;
   const esc = R.esc;
@@ -229,40 +229,16 @@
         <div class="panel"><h2>Rooms out of order</h2>${ooo.map(r => `<div class="list-item"><b>${r.no}</b><div class="grow small">${esc(r.ooo.reason)}<div class="muted">${R.fmtShort(r.ooo.since)} → ${R.fmtShort(r.ooo.until)}</div></div></div>`).join('') || '<p class="empty">None</p>'}</div></div>`;
   }
 
-  function compliance() {
-    const day = bd(), from = addDays(day, -6);
-    const S = R.S.sales.filter(s => s.or && s.date >= from);
-    const P = []; R.S.reservations.forEach(r => r.payments.filter(p => p.or && p.date >= from).forEach(p => P.push({ p, r })));
-    const VP = []; R.S.venueBookings.forEach(v => v.payments.filter(p => p.or && p.date >= from).forEach(p => VP.push(p)));
-    const ors = S.map(s => s.or).concat(P.map(x => x.p.or), VP.map(p => p.or)).sort();
-    const sum = k => S.reduce((s, x) => s + x.calc[k], 0);
-    const folio = P.reduce((s, x) => s + x.p.amount, 0);
-    const sc = R.S.sales.filter(s => s.date >= from && s.calc.scDisc);
-    const withId = R.S.guests.filter(g => g.idNo).length;
-    return `<div class="note" style="margin-bottom:16px">${R.icon('alert')}<div>Mockup figures. Before the system's point of sale (POS) issues official receipts, Camsair needs the BIR Permit to Use for the system. Check the format with the accountant.</div></div>
-      <div class="grid g2"><div class="panel"><h2>Sales summary, last 7 days</h2><dl class="kv">
-        <dt>Receipts issued</dt><dd>${ors.length}${ors.length ? ` · ${ors[0]} to ${ors[ors.length - 1]}` : ''}</dd>
-        <dt>POS sales (gross)</dt><dd>${R.peso(sum('gross'))}</dd><dt>Senior / PWD discount</dt><dd>− ${R.peso(sum('scDisc'))}</dd><dt>VAT removed for seniors / PWDs</dt><dd>− ${R.peso(sum('vatRemoved'))}</dd>
-        <dt>POS sales (net)</dt><dd>${R.peso(sum('total'))}</dd><dt>VATable sales</dt><dd>${R.peso(sum('vatable'))}</dd><dt>VAT (12%)</dt><dd>${R.peso(sum('vat'))}</dd><dt>VAT-exempt sales</dt><dd>${R.peso(sum('vatExempt'))}</dd>
-        <dt>Room bill payments</dt><dd>${R.peso(folio)} (VAT ${R.peso(folio - folio / 1.12)})</dd>
-        <dt>Cottage deposits</dt><dd>${R.peso(VP.reduce((a, p) => a + p.amount, 0))}</dd></dl></div>
-        <div class="panel"><h2>Senior citizen and PWD sales</h2><div class="tbl"><table><thead><tr><th>Receipt</th><th>Date</th><th>ID</th><th class="right">Discount</th></tr></thead><tbody>
-          ${sc.map(s => `<tr class="click" data-act="fdReceipt" data-id="${s.id}"><td>${s.or || 'Room bill'}</td><td class="small">${R.fmtShort(s.date)}</td><td>${esc(s.seniorId)}</td><td class="right num">${R.peso(s.calc.discount)}</td></tr>`).join('') || '<tr><td colspan="4" class="empty">None</td></tr>'}</tbody></table></div></div>
-        <div class="panel"><h2>Guest data (Data Privacy Act)</h2><dl class="kv"><dt>Guests on file</dt><dd>${R.S.guests.length}</dd><dt>With ID details</dt><dd>${withId}</dd><dt>Consent recorded</dt><dd>At every check-in (registration card)</dd><dt>Who can see IDs</dt><dd>Front office and managers. IDs are masked on screen.</dd></dl></div>
-        <div class="panel"><h2>Audit trail</h2><p class="small muted" style="margin-bottom:8px">Voids, refunds, rate changes and cancellations, with who approved them.</p>
-          ${R.S.audit.filter(a => /void|Refund|Rate|Cancel|Out of order|Night audit|Shift closed/i.test(a.action)).slice(0, 8).map(a => `<div class="list-item"><span class="small muted nowrap">${R.fmtShort(a.date)} ${a.at}</span><div class="grow small"><b>${esc(a.action)}</b> ${esc(a.detail)}</div><span class="small">${esc(R.staff(a.user).name)}</span></div>`).join('') || '<p class="empty">Nothing yet. Void a charge or give a refund to see it here.</p>'}</div></div>`;
-  }
-
   R.act.printPage = () => window.print();
   R.act.sendReport = d => { R.log('Daily report sent', `${R.fmt(d.day)} to ${R.S.notify.to}`); R.save(); R.toast(`Daily manager report sent to ${R.S.notify.to.split(',')[0]}`); };
   R.views.reports = {
     title: 'Reports',
     hint: 'How the resort is doing. Figures update live as bookings, charges and payments happen.',
     render() {
-      const tabs = [['health', 'Business health'], ['daily', 'Daily manager report'], ['revenue', 'Revenue'], ['daytour', 'Day tour'], ['ops', 'Operations']].concat(R.S.modules.bir ? [['compliance', 'BIR & compliance']] : []);
+      const tabs = [['health', 'Business health'], ['daily', 'Daily manager report'], ['revenue', 'Revenue'], ['daytour', 'Day tour'], ['ops', 'Operations']];
       if (!tabs.some(t => t[0] === rTab)) rTab = 'health';
       return `<div class="tabs no-print">${tabs.map(([k, l]) => `<button class="${rTab === k ? 'on' : ''}" aria-pressed="${rTab === k}" data-act="rTab" data-tab="${k}">${l}</button>`).join('')}</div>
-        ${{ health, daily, revenue, daytour, ops, compliance }[rTab]()}`;
+        ${{ health, daily, revenue, daytour, ops }[rTab]()}`;
     }
   };
 })();

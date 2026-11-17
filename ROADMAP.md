@@ -25,9 +25,6 @@ This file lists what the real build still needs.
 2. **Channel manager connection** (Agoda, Booking.com) so availability and rates stay in sync both ways. Brings back "close a night on booking sites" (stop-sell).
 3. **Works offline** at the front desk and sales counters, and syncs when the internet is back.
 4. **Accounting export** (QuickBooks, Xero or Excel).
-
-### On hold (built in the mockup, hidden for now)
-- **BIR & compliance:** VAT summary, receipt number range, senior / PWD sales list, TIN on receipts. Switched off with `modules.bir`; BIR Permit to Use needed before the system issues official receipts.
 5. **Company accounts (city ledger)**: companies that pay later by invoice, with unpaid amounts by age.
 6. **Rate plans and packages**: room only vs with breakfast, weekend minimum stay, promo codes; senior / PWD discount on room bills.
 7. **Automatic guest messages** by SMS / Messenger / email using the templates in the mockup.

@@ -436,6 +436,50 @@ tr.late td:first-child{box-shadow:inset 3px 0 0 var(--hibiscus)}
 .qs-item b{display:block}
 .qs-item small{display:block;color:var(--ink-3);font-size:13px}
 
+/* ---------- arrivals list ---------- */
+.arr-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.arr-head h3{font-family:var(--head);font-weight:400;font-size:22px}
+.arr-sum{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.arr-sum > div{background:var(--bg);border-radius:var(--r-m);padding:10px 12px}
+.arr-sum b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.arr-sum span{font-size:13px;color:var(--ink-3)}
+.arr-sum .warn{background:var(--sun-l)}
+.arr-sum .warn b,.arr-sum .warn span{color:#5A3F0E}
+.arr-group{margin-top:14px}
+.arr-group h4{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px;display:flex;gap:8px;align-items:center}
+.arr-group h4 span{background:#EDE5D8;color:var(--ink-2);border-radius:20px;padding:0 8px;letter-spacing:0}
+.arr-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.arr-row{display:grid;grid-template-columns:56px minmax(0,1fr) 150px 110px 86px;gap:14px;align-items:center;padding:12px 4px;border-bottom:1px solid #EFE7DA}
+.arr-row.is-done{opacity:.6}
+.arr-time b{display:block;font-size:17px}
+.arr-time small,.arr-money small{display:block;font-size:11px;color:var(--ink-3)}
+.arr-name{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.arr-name b{font-size:15px;overflow-wrap:anywhere}
+.arr-meta{font-size:13px;color:var(--ink-3);margin-top:2px}
+.arr-note{display:flex;gap:6px;align-items:flex-start;font-size:13px;color:#5A3F0E;background:var(--sun-l);border-radius:var(--r-s);padding:4px 8px;margin-top:6px;width:fit-content;max-width:100%}
+.arr-note .i{width:14px;height:14px;margin-top:2px}
+.arr-room b{display:block;font-size:17px}
+.rdy{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;margin-top:2px}
+.rdy i{font-style:normal;width:16px;height:16px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800;color:#fff}
+.rdy.ok{color:#285233}.rdy.ok i{background:var(--palm)}
+.rdy.mid{color:#234A63}.rdy.mid i{background:var(--sea)}
+.rdy.warn{color:#6E4F14}.rdy.warn i{background:var(--sun)}
+.rdy.bad{color:#8C1D17}.rdy.bad i{background:var(--hibiscus)}
+.rdy.done{color:var(--ink-3)}.rdy.done i{background:var(--ink-3)}
+.rdy.cot{color:#1E5560}.rdy.cot i{background:#24707C}
+.arr-money{text-align:right}
+.arr-money b{font-size:15px}
+.arr-money .paid{font-size:13px;font-weight:600;color:var(--palm)}
+.arr-act{text-align:right}
+.arr-empty{text-align:center;padding:40px 16px;display:flex;flex-direction:column;align-items:center;gap:6px}
+.print-only{display:none}
+.arr-tick{width:18px;height:18px;border:1.5px solid var(--ink);border-radius:4px}
+@media (max-width:820px){
+  .arr-sum{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .arr-row{grid-template-columns:48px minmax(0,1fr) auto;grid-template-areas:"t m r" "t mo a";row-gap:6px}
+  .arr-time{grid-area:t;align-self:start}.arr-main{grid-area:m}.arr-room{grid-area:r;text-align:right}.arr-money{grid-area:mo;text-align:left}.arr-act{grid-area:a}
+}
+
 /* ---------- reports ---------- */
 .rep-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .verdict{display:flex;gap:16px;align-items:flex-start;border-radius:var(--r-l);padding:18px 22px;margin-bottom:16px;box-shadow:var(--edge);background:var(--surface)}
@@ -596,5 +640,12 @@ tr.late td:first-child{box-shadow:inset 3px 0 0 var(--hibiscus)}
   .panel{break-inside:avoid;border-color:#ccc}
   body.print-modal .app{display:none}
   body.print-modal .modal-back{position:static;background:none;padding:0}
-  body.print-modal .modal{box-shadow:none}
+  body.print-modal .modal{box-shadow:none;width:100%;padding:0}
+  body.print-modal .modal header{display:none}
+  .print-only{display:block}
+  .arr-row{grid-template-columns:22px 52px minmax(0,1fr) 120px 90px;gap:10px;padding:8px 0;break-inside:avoid}
+  .arr-row.is-done{opacity:1}
+  .arr-sum > div{border:1px solid #ccc;background:none}
+  .arr-note{background:none;border:1px solid #ccc}
+  .arr-foot{margin-top:14px;font-size:12px;color:#555}
 }

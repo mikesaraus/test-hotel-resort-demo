@@ -19,7 +19,6 @@
       S.zones.splice(S.zones.findIndex(z => z.id === 'family') + 1, 0, { id: 'Z-pool', name: 'Swimming pool', kind: 'feature', style: 'pool', span: 6 });
     }
     if (S.modules.roster === undefined) S.modules.roster = false;
-    if (S.modules.bir === undefined) S.modules.bir = false; // BIR reports and TIN on receipts: hidden for now
     if (S.rules.guestEntranceFree === undefined) S.rules.guestEntranceFree = true;
     if (!S.vouchers) S.vouchers = [
       { code: 'CAMSAIR10', label: '10% off cottage', kind: 'pct', value: 10, active: true, uses: 0 },
