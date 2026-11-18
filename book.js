@@ -37,6 +37,28 @@
   const phoneNice = p => { const d = p.replace(/\D/g, '').replace(/^63/, '0'); return d.length === 11 ? `${d.slice(0, 4)} ${d.slice(4, 7)} ${d.slice(7)}` : p; };
   const longDate = d => new Date(d + 'T12:00:00').toLocaleDateString('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   const sel = () => B.tab === 'stay' ? roomOptions().find(o => o.t.id === B.type) : cottageKinds().find(k => k.kind === B.kind);
+  const kPeso = n => '₱' + (n >= 1000 ? Math.round(n / 100) / 10 + 'k' : Math.round(n));
+  const plural = (n, w, ws) => `${n} ${n === 1 ? w : ws || w + 's'}`;
+
+  // ---------- what the calendars show under each day ----------
+  if (window.DP) {
+    // stays: the lowest room price that night for this many guests; full nights can't be a check-in
+    DP.info.stay = d => {
+      const fit = R.S.roomTypes.filter(t => t.cap >= people()), open = fit.filter(t => R.typeAvail(t.id, d, 1) > 0);
+      if (!open.length) return { text: 'Full', full: true, note: fit.length ? 'fully booked' : `no room sleeps ${people()}` };
+      const p = Math.min(...open.map(t => R.priceOn(t.id, d))), usual = Math.min(...open.map(t => t.base));
+      const left = open.reduce((a, t) => a + R.typeAvail(t.id, d, 1), 0);
+      return { text: kPeso(p), tone: left <= 2 ? 'few' : p < usual ? 'low' : '', note: `rooms from ${R.money(p)} a night${left <= 2 ? `, only ${plural(left, 'room')} left` : p < usual ? ', below the usual rate' : ''}` };
+    };
+    DP.info.stay.legend = () => `Lowest room price a night for ${plural(people(), 'guest')}. <i style="background:var(--palm)"></i>Below the usual rate <i style="background:#8A5F1C"></i>Almost full <i style="background:var(--hibiscus)"></i>Full`;
+    // day tours: cottages still free for the chosen session and group size
+    DP.info.day = d => {
+      const fit = R.S.dayuse.cottages.filter(c => c.cap >= B.pax);
+      const free = fit.filter(c => !R.S.venueBookings.some(v => v.venue === c.id && v.date === d && v.session === B.session && (v.status === 'booked' || v.status === 'arrived'))).length;
+      return free ? { text: `${free} left`, tone: free <= 2 ? 'few' : '', note: `${plural(free, 'cottage')} free` } : { text: 'Full', full: true, note: 'no cottage free' };
+    };
+    DP.info.day.legend = () => `Cottages still free for ${B.session === 'day' ? 'the day tour' : 'the night swim'}, for ${plural(B.pax, 'person', 'people')}.`;
+  }
 
   // ---------- validation, step by step ----------
   function check(step) {
@@ -67,47 +89,54 @@
   // ---------- pieces ----------
   const field = (id, label, input, hint) => `<div class="bk-field ${errors[id] ? 'has-err' : ''}"><label for="b-${id}">${label}</label>${input}${hint ? `<small class="hint">${hint}</small>` : ''}${errors[id] ? `<p class="err" id="e-${id}" role="alert">${esc(errors[id])}</p>` : ''}</div>`;
   const aria = id => errors[id] ? `aria-invalid="true" aria-describedby="e-${id}"` : '';
+  const errP = id => errors[id] ? `<p class="err" id="e-${id}" role="alert">${esc(errors[id])}</p>` : '';
   const stepper = (k, label, sub, min) => `<div class="bk-step-row ${errors[k] ? 'has-err' : ''}"><div><b>${label}</b><small>${sub}</small></div><div class="bk-stepper">
     <button type="button" data-b="n" data-k="${k}" data-n="-1" aria-label="One less ${label.toLowerCase()}" ${B[k] <= min ? 'disabled' : ''}>−</button><output aria-live="polite">${B[k]}</output>
     <button type="button" data-b="n" data-k="${k}" data-n="1" aria-label="One more ${label.toLowerCase()}">+</button></div></div>${errors[k] ? `<p class="err" role="alert">${esc(errors[k])}</p>` : ''}`;
   const STEPS = () => B.tab === 'stay' ? ['Dates', 'Room', 'Your details', 'Pay deposit'] : ['Date', 'Cottage', 'Your details', 'Pay deposit'];
-  const progress = () => `<ol class="bk-progress" aria-label="Booking steps">${STEPS().map((s, i) => `<li class="${i + 1 < B.step ? 'done' : i + 1 === B.step ? 'on' : ''}" ${i + 1 === B.step ? 'aria-current="step"' : ''}><span>${i + 1 < B.step ? '✓' : i + 1}</span>${s}</li>`).join('')}</ol>`;
+  const progress = () => `<ol class="bk-progress" aria-label="Booking steps">${STEPS().map((s, i) => { const n = i + 1, mark = `<span>${n < B.step ? '✓' : n}</span>`;
+    return `<li class="${n < B.step ? 'done' : n === B.step ? 'on' : ''}" ${n === B.step ? 'aria-current="step"' : ''}>${n < B.step ? `<button type="button" data-b="goto" data-v="${n}" aria-label="Step ${n}, ${s}: done. Go back to change it">${mark}${s}</button>` : `${mark}<b>${s}</b>`}</li>`; }).join('')}</ol>`;
+  const edit = (step, what) => `<button type="button" class="bk-edit" data-b="goto" data-v="${step}" aria-label="Change ${what}">Change</button>`;
 
   function summary(compact) {
     if (B.tab === 'stay') {
       const o = sel(), n = nights();
       return `<div class="bk-sum"><h3>Your stay</h3>
-        <p><b>${longDate(B.arrive)}</b> → <b>${longDate(B.depart)}</b><br><span class="muted">${n} night${n === 1 ? '' : 's'} · ${B.adults} adult${B.adults === 1 ? '' : 's'}${B.children ? `, ${B.children} child${B.children === 1 ? '' : 'ren'}` : ''}</span></p>
-        ${o ? `<p><b>${esc(o.t.name)}</b></p>${compact ? '' : o.rates.map((r, i) => `<div class="bk-line"><span>${R.fmtShort(addDays(B.arrive, i))}</span><span>${R.money(r)}</span></div>`).join('')}
+        <div class="bk-sum-row"><p><b>${longDate(B.arrive)}</b> to <b>${longDate(B.depart)}</b><br><span class="muted">${n} night${n === 1 ? '' : 's'}, ${B.adults} adult${B.adults === 1 ? '' : 's'}${B.children ? `, ${B.children} child${B.children === 1 ? '' : 'ren'}` : ''}</span></p>${edit(1, 'dates and guests')}</div>
+        ${o ? `<div class="bk-sum-row"><p><b>${esc(o.t.name)}</b><br><span class="muted">${esc(o.t.bed)} bed, ${esc(o.t.view.toLowerCase())} view</span></p>${edit(2, 'room')}</div>${compact ? '' : o.rates.map((r, i) => `<div class="bk-line"><span>${R.fmtShort(addDays(B.arrive, i))}</span><span>${R.money(r)}</span></div>`).join('')}
         <div class="bk-line total"><span>Total</span><b>${R.money(o.total)}</b></div>
         <div class="bk-line due"><span>Pay now (${R.S.rules.deposit}% deposit)</span><b>${R.money(depositOf(o.total))}</b></div>
         <div class="bk-line"><span>Pay at check-in</span><span>${R.money(o.total - depositOf(o.total))}</span></div>` : ''}</div>`;
     }
     const k = sel(), sess = B.session === 'day' ? `Day tour, ${R.S.dayuse.hours.day}` : `Night swim, ${R.S.dayuse.hours.night}`;
-    return `<div class="bk-sum"><h3>Your day at Camsair</h3><p><b>${longDate(B.date)}</b><br><span class="muted">${sess} · ${B.pax} people</span></p>
-      ${k ? `<p><b>${esc(k.kind)}</b> <span class="muted">for up to ${k.cap}</span></p><div class="bk-line total"><span>Cottage</span><b>${R.money(k.price)}</b></div>
+    return `<div class="bk-sum"><h3>Your day at Camsair</h3><div class="bk-sum-row"><p><b>${longDate(B.date)}</b><br><span class="muted">${sess}, ${B.pax} people</span></p>${edit(1, 'date and group')}</div>
+      ${k ? `<div class="bk-sum-row"><p><b>${esc(k.kind)}</b><br><span class="muted">for up to ${k.cap} people</span></p>${edit(2, 'cottage')}</div><div class="bk-line total"><span>Cottage</span><b>${R.money(k.price)}</b></div>
       <div class="bk-line due"><span>Pay now (${R.S.rules.deposit}% deposit)</span><b>${R.money(depositOf(k.price))}</b></div>
       <div class="bk-line"><span>Pay at the gate</span><span>${R.money(k.price - depositOf(k.price))} + entrance</span></div>` : ''}
       <p class="small muted" style="margin-top:8px">Entrance: adult ${R.money(R.S.dayuse.entrance[B.session].adult)}, child ${R.money(R.S.dayuse.entrance[B.session].child)}, below 3 free. Seniors and PWDs get 20% off with ID.</p></div>`;
   }
 
   // ---------- steps ----------
+  const trip = (what, label) => `<div class="bk-trip">${R.icon('calendar')}<p>${what}</p><button type="button" class="btn ghost" data-b="goto" data-v="1" aria-label="Change ${label}">Change</button></div>`;
   function step1() {
     if (B.tab === 'day') return `<h1 tabindex="-1">When are you coming?</h1><p class="lead">Reserve a cottage so it's ready when your group arrives.</p>
-      <div class="bk-card">${field('date', 'Date', `<input type="date" id="b-date" data-f="date" min="${bd()}" value="${B.date}" ${aria('date')}>`)}
+      <div class="bk-card bk-search">${field('date', 'Date', `<input type="date" id="b-date" data-f="date" data-dp-info="day" min="${bd()}" value="${B.date}" ${aria('date')}>`, 'Open the calendar to see how many cottages are free each day')}
         <fieldset class="bk-choice"><legend>Session</legend>${[['day', 'Day tour', R.S.dayuse.hours.day], ['night', 'Night swim', R.S.dayuse.hours.night]].map(([v, l, h]) => `<label class="bk-opt"><input type="radio" name="sess" value="${v}" data-f="session" ${B.session === v ? 'checked' : ''}><span><b>${l}</b><small>${h}</small></span></label>`).join('')}</fieldset>
         ${stepper('pax', 'People', 'everyone coming, kids too', 1)}</div>
       <button class="btn big bk-go" data-b="next">See available cottages</button>`;
-    return `<h1 tabindex="-1">When are you staying?</h1><p class="lead">Check-in ${esc(R.S.rules.checkin)} · check-out ${esc(R.S.rules.checkout)}</p>
-      <div class="bk-card"><div class="bk-two">${field('arrive', 'Check-in', `<input type="date" id="b-arrive" data-f="arrive" min="${bd()}" value="${B.arrive}" ${aria('arrive')}>`)}
-        ${field('depart', 'Check-out', `<input type="date" id="b-depart" data-f="depart" min="${addDays(B.arrive || bd(), 1)}" value="${B.depart}" ${aria('depart')}>`, nights() > 0 ? `${nights()} night${nights() === 1 ? '' : 's'}` : '')}</div>
-        ${stepper('adults', 'Adults', '13 and older', 1)}${stepper('children', 'Children', '12 and younger', 0)}</div>
+    return `<h1 tabindex="-1">When are you staying?</h1><p class="lead">Check-in from ${esc(R.S.rules.checkin)}, check-out by ${esc(R.S.rules.checkout)}</p>
+      <div class="bk-card bk-search bk-search-stay">
+        <div class="bk-field bk-dates ${errors.arrive || errors.depart ? 'has-err' : ''}" data-dp-range role="group" aria-labelledby="l-dates"><span class="bk-label" id="l-dates">Dates</span>
+          <input type="date" id="b-arrive" data-f="arrive" data-dp-label="Check-in" data-dp-info="stay" min="${bd()}" value="${B.arrive}" ${aria('arrive')}>
+          <input type="date" id="b-depart" data-f="depart" data-dp-label="Check-out" min="${addDays(bd(), 1)}" value="${B.depart}" ${aria('depart')}>
+          ${errP('arrive')}${errP('depart')}<small class="hint">The calendar shows the lowest room price for each night</small></div>
+        <div class="bk-guests"><span class="bk-label">Guests</span>${stepper('adults', 'Adults', '13 and older', 1)}${stepper('children', 'Children', '12 and younger', 0)}</div></div>
       <button class="btn big bk-go" data-b="next">See available rooms</button>`;
   }
   function step2() {
     if (B.tab === 'day') {
       const K = cottageKinds();
-      return `<button class="bk-back" data-b="back">${R.icon('back')}Change date</button><h1 tabindex="-1">Choose a cottage</h1><p class="lead">${longDate(B.date)} · ${B.session === 'day' ? 'Day tour' : 'Night swim'} · ${B.pax} people</p>
+      return `<h1 tabindex="-1">Choose a cottage</h1>${trip(`<b>${longDate(B.date)}</b><span>${B.session === 'day' ? 'Day tour' : 'Night swim'}, ${B.pax} people</span>`, 'date and group')}
         ${errors.pick ? `<p class="err" role="alert">${esc(errors.pick)}</p>` : ''}
         <div class="bk-rooms">${K.map(k => { const ok = k.free.length && B.pax <= k.cap; const [ico, desc] = KIND[k.kind] || ['i-hut', '']; return `<article class="bk-room ${B.kind === k.kind ? 'picked' : ''} ${ok ? '' : 'off'}">
           <div class="bk-pic" style="background:#E6E9D6">${R.icon(ico.slice(2))}<span>${esc(k.kind)}</span></div>
@@ -118,15 +147,17 @@
         ${sel() ? '<button class="btn big bk-go" data-b="next">Continue</button>' : ''}
         ${K.every(k => !k.free.length || B.pax > k.cap) ? `<div class="bk-card bk-none"><b>Nothing fits on this date.</b><p class="muted">Try another date, split the group, or message us on Messenger and we'll find you a spot.</p><button class="btn ghost" data-b="back">Change date</button></div>` : ''}`;
     }
-    const O = roomOptions(), n = nights();
-    return `<button class="bk-back" data-b="back">${R.icon('back')}Change dates</button><h1 tabindex="-1">Choose your room</h1>
-      <p class="lead">${longDate(B.arrive)} → ${longDate(B.depart)} · ${n} night${n === 1 ? '' : 's'} · ${people()} guest${people() === 1 ? '' : 's'}</p>
+    const n = nights(), O = roomOptions().sort((a, b) => (b.left > 0 && b.fits) - (a.left > 0 && a.fits) || a.total - b.total);
+    const cheapest = O.find(o => o.left > 0 && o.fits);
+    return `<h1 tabindex="-1">Choose your room</h1>${trip(`<b>${longDate(B.arrive)} to ${longDate(B.depart)}</b><span>${plural(n, 'night')}, ${plural(people(), 'guest')}</span>`, 'dates and guests')}
       ${errors.pick ? `<p class="err" role="alert">${esc(errors.pick)}</p>` : ''}
       <div class="bk-rooms">${O.map(o => { const ok = o.left > 0 && o.fits, [bg, ico] = TYPE_LOOK[o.t.id] || ['#E9E1D3', 'i-bed']; return `<article class="bk-room ${B.type === o.t.id ? 'picked' : ''} ${ok ? '' : 'off'}">
         <div class="bk-pic" style="background:${bg}">${R.icon(ico.slice(2))}<span>${esc(o.t.view)}</span></div>
         <div class="bk-room-body"><h2>${esc(o.t.name)}</h2>
           <p class="bk-facts">${R.icon('users')}Sleeps ${o.t.cap} · ${R.icon('bed')}${esc(o.t.bed)} · ${esc(o.t.size)}</p>
-          <div class="bk-price"><b>${R.money(o.total)}</b><span>for ${n} night${n === 1 ? '' : 's'} · ${R.money(o.total / n)} a night${o.seasons.length ? ` · ${o.seasons.map(esc).join(', ')} rates` : ''}</span></div>
+          ${o === cheapest && O.filter(x => x.left > 0 && x.fits).length > 1 ? '<span class="bk-tag">Lowest price for your dates</span>' : ''}
+          <div class="bk-price"><b>${R.money(o.total)}</b><span>for ${plural(n, 'night')}, about ${R.money(o.total / n)} a night${o.seasons.length ? `. ${o.seasons.map(esc).join(', ')} rates` : ''}</span></div>
+          ${n > 1 ? `<details class="bk-nightly"><summary>Price for each night</summary><ul>${o.rates.map((r, i) => `<li><span>${R.fmt(addDays(B.arrive, i))}</span><span>${R.money(r)}</span></li>`).join('')}</ul></details>` : ''}
           <p class="bk-left ${o.left <= 2 ? 'low' : ''}">${!o.left ? 'Sold out for these dates' : !o.fits ? `Sleeps ${o.t.cap}: too small for ${people()}` : o.left <= 2 ? `Only ${o.left} left` : 'Available'}</p>
           <button class="btn ${B.type === o.t.id ? '' : 'ghost'}" data-b="pick" data-v="${o.t.id}" ${ok ? '' : 'disabled'} aria-label="${B.type === o.t.id ? 'Selected' : 'Choose'} ${esc(o.t.name)}, ${R.money(o.total)}">${B.type === o.t.id ? 'Selected' : 'Choose'}</button></div></article>`; }).join('')}</div>
       ${sel() ? '<button class="btn big bk-go" data-b="next">Continue</button>' : ''}
@@ -160,7 +191,8 @@
   function done() {
     const d = B.done;
     return `<div class="bk-done"><span class="bk-done-ico">${R.icon('check')}</span><h1 tabindex="-1">You're booked!</h1>
-      <p class="lead">Booking number <b class="bk-ref">${esc(d.ref)}</b>. We've texted the details to ${esc(phoneNice(d.phone))}${d.email ? ' and emailed ' + esc(d.email) : ''}.</p>
+      <p class="bk-ref-row">Booking number <b class="bk-ref">${esc(d.ref)}</b><button type="button" class="btn ghost" data-b="copy">Copy</button></p>
+      <p class="lead">We've texted the details to ${esc(phoneNice(d.phone))}${d.email ? ' and emailed ' + esc(d.email) : ''}.</p>
       <div class="bk-card bk-done-card"><dl>${d.rows.map(([a, b]) => `<dt>${a}</dt><dd>${b}</dd>`).join('')}</dl></div>
       <div class="bk-card"><b>What's next</b><ul class="bk-next">${d.next.map(x => `<li>${x}</li>`).join('')}</ul></div>
       <div class="row center" style="margin-top:16px"><button class="btn ghost" data-b="ics">${R.icon('calendar')}Add to calendar</button><button class="btn" data-b="again">Make another booking</button></div></div>`;
@@ -201,6 +233,14 @@
       next: ['Show your booking number at the gate. Your cottage is held until 1 hour after your arrival time.', 'Entrance is paid at the gate. Seniors and PWDs: bring your ID for the 20% discount.', 'Outside lechon and drinks have a corkage fee.'] };
   }
 
+  function hero() {
+    const from = Math.min(...R.S.roomTypes.map(t => t.base));
+    return `<div class="bk-hero-in">${B.tab === 'stay'
+      ? `<p class="bk-hero-t">Stay at Camsair, Initao</p><p class="bk-hero-s">Rooms and villas by the pool and garden, from ${R.money(from)} a night.</p>`
+      : `<p class="bk-hero-t">A day by the pool</p><p class="bk-hero-s">Day tours ${esc(R.S.dayuse.hours.day)} and night swims ${esc(R.S.dayuse.hours.night)}. Reserve a cottage for your group.</p>`}
+      <ul class="bk-hero-facts"><li>${R.icon('check')}Lowest price when you book here</li><li>${R.icon('check')}Pay ${R.S.rules.deposit}% now by GCash, Maya or card</li><li>${R.icon('check')}Move your dates once if plans change</li></ul></div>`;
+  }
+
   // ---------- render + events ----------
   function render(focusTop) {
     const main = $('#book');
@@ -211,8 +251,11 @@
     const dock = o && B.step < 4 ? `<div class="bk-dock"><div><small>${B.tab === 'stay' ? `${nights()} night${nights() === 1 ? '' : 's'}` : 'Cottage'} · total</small><b>${R.money(total)}</b><small>${R.money(depositOf(total))} deposit today</small></div><button class="btn" data-b="next">${B.step === 2 ? 'Continue' : 'Continue to payment'}</button></div>` : '';
     main.innerHTML = tabs + (B.step === 5 ? '' : progress()) + `<section class="bk-body">${body}</section>` + dock;
     document.body.classList.toggle('has-dock', !!dock);
+    document.body.classList.toggle('at-start', B.step === 1);
+    $('#bk-hero').innerHTML = B.step === 1 ? hero() : '';
+    if (window.DP) DP.enhance(main);
     if (focusTop) { const h = main.querySelector('h1'); if (h) h.focus({ preventScroll: true }); window.scrollTo({ top: 0 }); }
-    else { const first = main.querySelector('[aria-invalid="true"]'); if (first) first.focus(); }
+    else { const first = main.querySelector('[aria-invalid="true"]:not([hidden])'); if (first) first.focus(); }
   }
   const go = (step, top) => { errors = {}; B.step = step; keep(); render(top !== false); };
 
@@ -220,6 +263,7 @@
     const f = e.target.dataset && e.target.dataset.f; if (!f) return;
     const el = e.target;
     B[f] = el.type === 'checkbox' ? el.checked : el.value;
+    if (f === 'arrive') { const d = $('#b-depart'); if (d && d.value) B.depart = d.value; }
     if (f === 'arrive' && B.depart <= B.arrive) B.depart = addDays(B.arrive, 1);
     if (['arrive', 'depart', 'date', 'session', 'pay'].includes(f)) { if (f !== 'pay') { B.type = ''; B.kind = ''; } keep(); render(false); return; }
     if (errors[f]) { delete errors[f]; const box = el.closest('.has-err'); if (box) { box.classList.remove('has-err'); const m = box.querySelector('.err'); if (m) m.remove(); el.removeAttribute('aria-invalid'); } }
@@ -234,6 +278,11 @@
     else if (a === 'n') { B[b.dataset.k] = Math.max(b.dataset.k === 'children' ? 0 : 1, B[b.dataset.k] + +b.dataset.n); B.type = ''; B.kind = ''; keep(); render(false); }
     else if (a === 'pick') { if (B.tab === 'stay') B.type = b.dataset.v; else B.kind = b.dataset.v; errors = {}; keep(); render(false); }
     else if (a === 'back') go(Math.max(1, B.step - 1));
+    else if (a === 'goto') { const s = +b.dataset.v; if (s < B.step) go(s); }
+    else if (a === 'copy') {
+      const ref = B.done.ref, ok = () => R.toast(`Booking number ${ref} copied`);
+      if (navigator.clipboard) navigator.clipboard.writeText(ref).then(ok, () => R.toast('Copy failed. Write down ' + ref)); else R.toast('Write down your booking number: ' + ref);
+    }
     else if (a === 'next') {
       errors = check(B.step);
       if (Object.keys(errors).length) { render(false); return; }
