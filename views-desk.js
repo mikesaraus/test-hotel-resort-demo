@@ -282,19 +282,72 @@
     R.log(r.room ? 'Room assigned' : 'Room unassigned', r.room ? 'Room ' + r.room : '', r.id);
     R.rerender(); R.toast(r.room ? `Room ${r.room} assigned` : 'Room unassigned');
   };
+  // move to another room: the rooms free for the rest of the stay, same type first and ready ones first,
+  // with what changes (price, cleaning); keep the rate or take the new room's
   R.act.moveRoom = d => {
-    const r = R.res(d.id);
+    const r = R.res(d.id), g = R.guest(r.guestId), cur = R.type(r.type);
     const from = r.status === 'inhouse' ? bd() : r.arrive, left = Math.max(1, daysBetween(from, R.dep(r)));
-    const free = R.freeRooms(null, from, left, r.id).filter(x => x.no !== r.room);
+    const posted = R.lines(r).filter(f => f.kind === 'night').length, rest = r.rates.slice(posted), restSum = rest.reduce((a, b) => a + b, 0);
+    const newRates = type => r.rates.map((x, i) => i < posted ? x : R.priceOn(type, addDays(r.arrive, i)));
+    const ready = x => x.hk === 'inspected' || x.hk === 'clean';
+    const zone = x => (R.S.zones.find(z => z.id === x.zone) || {}).name || '';
+    const free = R.freeRooms(null, from, left, r.id).filter(x => x.no !== r.room)
+      .sort((a, b) => (b.type === r.type) - (a.type === r.type) || ready(b) - ready(a) || a.no.localeCompare(b.no, undefined, { numeric: true }));
+    const same = free.filter(x => x.type === r.type).length;
+    const st = { show: same ? 'same' : 'all', q: '', to: '', rate: 'keep' };
+    const diffOf = x => newRates(x.type).slice(posted).reduce((a, b) => a + b, 0) - restSum;
+    const perNight = n => R.money(Math.abs(n) / Math.max(1, r.nights - posted));
     R.authorize({ perm: 'move', title: `Move from room ${r.room || '—'}`, ok: 'Move room', placeholder: 'e.g. aircon problem, guest asked for pool view',
-      body: `<label class="field">New room (free ${R.fmtShort(from)} → ${R.fmtShort(R.dep(r))})<select id="mvTo">${free.map(x => { const s = R.roomState(x); return `<option value="${x.no}">${x.no} · ${esc(R.type(x.type).name)} · ${s.label}</option>`; }).join('')}</select></label>
-        <p class="small muted" style="margin-top:6px">The rate stays the same. Change it separately if the new room costs more.</p>`,
-      check: () => free.length ? '' : 'No free rooms for these dates' }, a => {
-      const to = a.body.querySelector('#mvTo').value, old = r.room;
+      body: `<p class="mv-ctx"><b>${esc(g.name)}</b><span>${esc(cur.name)}${r.room ? `, room ${esc(r.room)}` : ''}. ${R.fmt(from)} to ${R.fmt(R.dep(r))}, ${left} night${left === 1 ? '' : 's'} ${r.status === 'inhouse' ? 'left' : ''}</span></p>
+        ${free.length ? `<div class="mv-tools">${R.fx.chips('mvShow', [['same', `Same type <small>${same}</small>`, !same], ['all', `All free rooms <small>${free.length}</small>`]], st.show, 'Show')}
+          ${free.length > 8 ? `<label class="field mv-find">Find a room<input id="mvQ" type="search" inputmode="search" placeholder="Room number or type" autocomplete="off"></label>` : ''}</div>
+          <div class="nb-types mv-list" id="mvList" role="radiogroup" aria-label="New room"></div>
+          <div id="mvRate"></div><div id="mvNote"></div>
+          <div class="nb-chips mv-why" role="group" aria-label="Common reasons">${['Aircon or repair problem', 'Guest asked for another room', 'Upgrade', 'Noise', 'Group wants rooms together'].map(x => `<button type="button" class="fx-q" data-mvwhy="${x}">${x}</button>`).join('')}</div>`
+        : `<p class="note warn">${R.icon('alert')}<span>No room is free from ${R.fmtShort(from)} to ${R.fmtShort(R.dep(r))}. Try changing the dates first.</span></p>`}`,
+      check: b => !free.length ? 'No room is free for these dates.' : !R.fx.radio(b, 'mvTo') ? 'Pick the new room.' : '',
+      mount: b => {
+        if (!free.length) { b.querySelector('#azGo').disabled = true; return; }
+        const $ = s => b.querySelector(s);
+        const paintList = () => {
+          const q = st.q.trim().toLowerCase();
+          const L = free.filter(x => (st.show === 'all' || x.type === r.type) && (!q || (x.no + ' ' + R.type(x.type).name + ' ' + zone(x)).toLowerCase().includes(q)));
+          $('#mvList').innerHTML = L.map(x => { const dlt = diffOf(x), t = R.type(x.type);
+            return `<label class="nb-type mv-room ${st.to === x.no ? 'on' : ''}"><input type="radio" name="mvTo" value="${esc(x.no)}" ${st.to === x.no ? 'checked' : ''}>
+              <span class="nb-type-name"><b>Room ${esc(x.no)}</b><small>${esc(t.name)}${zone(x) ? `, ${esc(zone(x))}` : ''}. Sleeps ${t.cap}${r.adults + r.children > t.cap ? `, <span class="warn-text">too small for ${r.adults + r.children}</span>` : ''}</small></span>
+              <span class="chip ${ready(x) ? 'green' : 'amber'}">${x.hk === 'inspected' ? 'Inspected' : x.hk === 'clean' ? 'Clean' : 'Needs cleaning'}</span>
+              <span class="nb-type-price"><b>${x.type === r.type || !dlt ? 'Same price' : `${dlt > 0 ? '+' : '−'}${perNight(dlt)}`}</b><small>${x.type === r.type || !dlt ? '' : 'a night at its rate'}</small></span></label>`; }).join('')
+            || `<p class="mv-none">No free room matches “${esc(st.q.trim())}”.</p>`;
+          paintPick();
+        };
+        const paintPick = () => {
+          const x = free.find(y => y.no === st.to), dlt = x ? diffOf(x) : 0;
+          $('#mvRate').innerHTML = x && x.type !== r.type && dlt ? R.fx.chips('mvRateC', [['keep', `Keep ${R.money(restSum / Math.max(1, rest.length))} a night`], ['new', `${esc(R.type(x.type).name)} rate, ${R.money((restSum + dlt) / Math.max(1, rest.length))} a night`]], st.rate, 'Room rate for the nights left') : '';
+          const notes = [];
+          if (x && x.type !== r.type && dlt && st.rate === 'keep') notes.push(dlt > 0 ? 'The guest keeps their current rate: an upgrade at no extra cost.' : 'The guest keeps their current rate, though the new room costs less.');
+          if (x && x.type !== r.type && dlt && st.rate === 'new') notes.push(`The ${r.nights - posted} night${r.nights - posted === 1 ? '' : 's'} not posted yet change to ${R.money(restSum + dlt)} in total (${dlt > 0 ? '+' : '−'}${R.money(Math.abs(dlt))}).`);
+          if (r.status === 'inhouse' && r.room) notes.push(`Room ${esc(r.room)} goes to housekeeping as dirty.`);
+          if (x && !ready(x) && r.status === 'inhouse') notes.push(`Room ${esc(x.no)} still needs cleaning, so the guest may have to wait.`);
+          $('#mvNote').innerHTML = notes.length ? `<ul class="mv-notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '';
+          $('#azGo').textContent = x ? `Move to room ${x.no}` : 'Move room';
+        };
+        b.addEventListener('input', e => {
+          const n = e.target.name;
+          if (n === 'mvShow') { st.show = e.target.value; paintList(); }
+          else if (n === 'mvTo') { st.to = e.target.value; st.rate = 'keep'; b.querySelectorAll('.mv-room').forEach(l => l.classList.toggle('on', l.querySelector('input').checked)); paintPick(); b.querySelector('#azErr').textContent = ''; }
+          else if (n === 'mvRateC') { st.rate = e.target.value; paintPick(); }
+          else if (e.target.id === 'mvQ') { st.q = e.target.value; if (st.q && st.show === 'same' && !free.some(x => x.type === r.type && (x.no + ' ' + R.type(x.type).name).toLowerCase().includes(st.q.toLowerCase()))) { st.show = 'all'; b.querySelector('[name=mvShow][value=all]').checked = true; } paintList(); }
+        });
+        b.addEventListener('click', e => { const w = e.target.closest('[data-mvwhy]'); if (!w) return; const t = $('#azReason'); t.value = t.value.trim() ? t.value.trim().replace(/[.,]$/, '') + ', ' + w.dataset.mvwhy : w.dataset.mvwhy; t.focus(); });
+        paintList();
+      } }, a => {
+      const to = R.fx.radio(a.body, 'mvTo'), old = r.room, x = R.room(to), rateNew = R.fx.radio(a.body, 'mvRateC') === 'new';
       if (r.status === 'inhouse' && old) R.room(old).hk = 'dirty';
-      r.room = to; r.type = R.room(to).type;
-      R.log('Room move', `${old || '—'} → ${to} · ${a.reason}`, r.id, a.by);
-      R.rerender(); R.toast(`Moved to room ${to}`);
+      const before = R.stayValue(r);
+      r.room = to; r.type = x.type;
+      if (rateNew) r.rates = newRates(x.type);
+      R.log('Room move', `${old || '—'} → ${to}${rateNew ? ` · rate changed to ${R.type(x.type).name} price (${R.money(R.stayValue(r) - before)})` : ''} · ${a.reason}`, r.id, a.by);
+      R.rerender(); R.toast(`Moved to room ${to}${rateNew ? ', new rate' : ''}`);
     });
   };
   R.act.changeRate = d => {
