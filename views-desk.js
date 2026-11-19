@@ -6,6 +6,7 @@
   const bd = () => R.bd();
   const PAY_METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
   const ID_TYPES = ['PhilSys National ID', "Driver's license", 'Passport', 'UMID', 'Senior citizen ID', 'PWD ID', 'Other government ID'];
+  R.ID_TYPES = ID_TYPES; // also used by the guest profile
 
   // stop early, with a clear message, when the role can't do something
   R.need = function (p) {
