@@ -19,6 +19,29 @@
     return nx ? `<span class="chip teal">Arrives ${R.fmtShort(nx.arrive)}</span>` : '';
   };
 
+  // ---------- searching every field of a guest ----------
+  // every word has to be found somewhere: "maria cebu" finds Maria from Cebu. Accents and spacing in numbers don't matter.
+  const fold = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const SEARCH_IN = [['name', 'name'], ['phone', 'mobile'], ['email', 'email'], ['town', 'address'], ['nationality', 'nationality'], ['tag', 'tag'], ['prefs', 'notes'], ['idType', 'ID type'], ['idNo', 'ID number'], ['id', 'guest no.'], ['bookings', 'booking no.']];
+  const fieldsOf = g => ({ name: g.name, phone: g.phone, email: g.email, town: g.town, nationality: g.nationality, tag: g.tag, prefs: g.prefs, idType: g.idType, idNo: g.idNo, id: g.id, bookings: staysOf(g).map(r => r.id).join(' ') });
+  const hit = (val, w) => { const v = fold(val); if (v.includes(w)) return true; const dw = w.replace(/\D/g, ''); return dw.length >= 3 && dw.length === w.replace(/[\s()+-]/g, '').length && v.replace(/\D/g, '').includes(dw); };
+  const searchGuest = (g, words) => {
+    const f = fieldsOf(g), found = new Set();
+    for (const w of words) { const keys = SEARCH_IN.filter(([k]) => hit(f[k], w)).map(([k]) => k); if (!keys.length) return null; keys.forEach(k => found.add(k)); }
+    return found;
+  };
+  // the text with the searched words marked (for name, mobile, email, address shown in the row)
+  const mark = (text, words) => {
+    let h = esc(text || ''); if (!words.length || !text) return h;
+    const t = fold(text), spans = [];
+    words.forEach(w => { let i = t.indexOf(w); while (i >= 0 && w) { spans.push([i, i + w.length]); i = t.indexOf(w, i + w.length); } });
+    if (!spans.length) return h;
+    spans.sort((a, b) => a[0] - b[0]); let out = '', at = 0;
+    spans.forEach(([a, b]) => { if (a < at) return; out += esc(text.slice(at, a)) + '<mark>' + esc(text.slice(a, b)) + '</mark>'; at = b; });
+    return out + esc(text.slice(at));
+  };
+  const snippet = (text, words) => { const t = fold(text), w = words.find(x => t.includes(x)); if (!w) return esc(text); const i = t.indexOf(w), a = Math.max(0, i - 24), b = Math.min(text.length, i + w.length + 32); return (a ? '…' : '') + mark(text.slice(a, b), words) + (b < text.length ? '…' : ''); };
+
   // ---------- Guests list ----------
   let gQ = '', gF = 'all', gSort = 'recent';
   const lastArrive = g => staysOf(g).filter(r => r.status !== 'cancelled').map(r => r.arrive).sort().pop() || '';
@@ -26,6 +49,14 @@
     const now = nowChip(g); if (now) return now;
     const last = staysOf(g).filter(r => r.status === 'checkedout').map(r => R.dep(r)).sort().pop();
     return last ? `<span class="small muted">Stayed ${R.fmtShort(last)}</span>` : '<span class="small muted">No stays yet</span>';
+  };
+  // when the words were found in a field the row doesn't show, say which and show the bit that matched
+  const foundLine = (g, f, words) => {
+    if (!f) return '';
+    const shown = ['name', 'phone', 'email', 'town'], rest = SEARCH_IN.filter(([k]) => f.has(k) && !shown.includes(k));
+    if (!rest.length) return '';
+    const val = (k) => k === 'idNo' ? esc(g.idNo.replace(/.(?=.{3})/g, '•')) : k === 'prefs' ? snippet(g.prefs, words) : k === 'bookings' ? mark(staysOf(g).map(r => r.id).filter(id => words.some(w => fold(id).includes(w))).join(', '), words) : mark(fieldsOf(g)[k], words);
+    return `<div class="g-found">Found in ${rest.map(([k, l]) => `${l}: <span>${val(k)}</span>`).join('; ')}</div>`;
   };
   const SORTS = [['recent', 'Most recent stay'], ['name', 'Name, A to Z'], ['stays', 'Most stays'], ['spend', 'Highest spend']];
   R.act.gFilter = d => { gF = d.f; R.render(); };
@@ -37,7 +68,8 @@
     render() {
       const q = gQ.trim().toLowerCase(), qd = q.replace(/\D/g, '');
       const dupSet = new Set(); R.S.guests.forEach(g => { if (R.dupsOf(g).length) dupSet.add(g.id); });
-      const match = g => !q || g.name.toLowerCase().includes(q) || (g.email || '').toLowerCase().includes(q) || (g.town || '').toLowerCase().includes(q) || (qd.length >= 3 && g.phone.replace(/\D/g, '').includes(qd));
+      const words = fold(gQ).split(/\s+/).filter(Boolean), why = new Map();
+      const match = g => { if (!words.length) return true; const f = searchGuest(g, words); if (f) why.set(g.id, f); return !!f; };
       const TESTS = { all: () => true, inhouse: g => staysOf(g).some(r => r.status === 'inhouse'), soon: g => staysOf(g).some(r => r.status === 'booked' && r.arrive <= addDays(bd(), 7)),
         repeat: g => pastStays(g) >= 2 || g.tag === 'Repeat guest', vip: g => g.tag === 'VIP', dups: g => dupSet.has(g.id) };
       const found = R.S.guests.filter(match);
@@ -47,18 +79,18 @@
       const F = [['all', 'All'], ['inhouse', 'In house'], ['soon', 'Arriving in 7 days'], ['repeat', 'Repeat'], ['vip', 'VIP'], ['dups', 'Possible duplicates']];
       const can = R.can('book'), shown = L.slice(0, 150);
       return `<div class="panel"><div class="g-tools">
-          <div class="g-search">${R.icon('search')}<input type="search" id="gSearch" placeholder="Search name, mobile, email or town" value="${esc(gQ)}" aria-label="Search guests" autocomplete="off" spellcheck="false">${gQ ? '<button type="button" class="g-clear" data-act="gClear" aria-label="Clear the search">×</button>' : ''}</div>
+          <div class="g-search">${R.icon('search')}<input type="search" id="gSearch" placeholder="Search name, mobile, email, address, notes, ID or booking no." value="${esc(gQ)}" aria-label="Search guests" autocomplete="off" spellcheck="false">${gQ ? '<button type="button" class="g-clear" data-act="gClear" aria-label="Clear the search">×</button>' : ''}</div>
           <label class="g-sort">Sort<select data-change="gSort" aria-label="Sort guests" ${gF === 'dups' ? 'disabled' : ''}>${SORTS.map(([k, l]) => `<option value="${k}" ${gSort === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           ${can ? `<button class="btn" data-act="newGuest">${R.icon('plus')}New guest</button>` : ''}</div>
         <div class="seg g-filters" role="group" aria-label="Show">${F.map(([f, l]) => { const n = found.filter(TESTS[f]).length; return `<button class="${gF === f ? 'on' : ''}" aria-pressed="${gF === f}" data-act="gFilter" data-f="${f}"><b>${l}</b> <span class="g-n">${n}</span></button>`; }).join('')}</div>
         ${gF === 'dups' && L.length ? `<div class="note warn" style="margin:10px 0">${R.icon('users')}<div>These profiles share a name or a mobile number. Open one and merge the others into it, so the stay history is in one place.</div></div>` : ''}
         ${L.length ? `<div class="tbl"><table class="g-tbl"><thead><tr><th>Guest</th><th>From</th><th>Stay</th><th>Notes</th><th class="right">Stays</th><th class="right">Spend</th></tr></thead><tbody>
-        ${shown.map(g => `<tr class="click" data-act="openGuest" data-id="${g.id}"><td class="g-who"><span class="avatar sm ${g.tag === 'VIP' ? 'vip' : ''}" aria-hidden="true">${esc(R.initials(g.name))}</span><div><a href="#guest/${g.id}" class="g-name">${esc(g.name)}</a>${dupSet.has(g.id) ? ' <span class="chip amber">Duplicate?</span>' : ''}<div class="small muted">${esc(g.phone) || 'No mobile'}${g.email ? ` · ${esc(g.email)}` : ''}</div></div></td>
-          <td class="small">${esc(g.town) || '<span class="muted">—</span>'}</td><td>${whenChip(g)}</td>
+        ${shown.map(g => `<tr class="click" data-act="openGuest" data-id="${g.id}"><td class="g-who"><span class="avatar sm ${g.tag === 'VIP' ? 'vip' : ''}" aria-hidden="true">${esc(R.initials(g.name))}</span><div><a href="#guest/${g.id}" class="g-name">${mark(g.name, words)}</a>${dupSet.has(g.id) ? ' <span class="chip amber">Duplicate?</span>' : ''}<div class="small muted">${g.phone ? mark(g.phone, words) : 'No mobile'}${g.email ? ` · ${mark(g.email, words)}` : ''}</div>${foundLine(g, why.get(g.id), words)}</div></td>
+          <td class="small">${g.town ? mark(g.town, words) : '<span class="muted">—</span>'}</td><td>${whenChip(g)}</td>
           <td>${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}${g.prefs ? `<div class="small muted ellip">${esc(g.prefs)}</div>` : ''}</td>
           <td class="right num">${pastStays(g) > 1 ? `<span class="chip green">${pastStays(g)}</span>` : pastStays(g)}</td><td class="right num">${R.money(spendOf(g))}</td></tr>`).join('')}
         </tbody></table></div>${L.length > shown.length ? `<p class="small muted g-more">Showing ${shown.length} of ${L.length} guests. Search to find the others.</p>` : ''}`
-        : `<div class="g-empty"><b>${q ? `No guests match “${esc(gQ.trim())}”` : 'No guests here yet'}</b><p class="muted">${q ? 'Check the spelling, or search by mobile number.' : 'Guests appear here once they book.'}</p>
+        : `<div class="g-empty"><b>${q ? `No guests match “${esc(gQ.trim())}”` : 'No guests here yet'}</b><p class="muted">${q ? 'Try fewer words, or part of a name, mobile, address, note or ID number.' : 'Guests appear here once they book.'}</p>
             <div class="row">${q ? '<button class="btn ghost" data-act="gClear">Clear the search</button>' : ''}${gF !== 'all' ? '<button class="btn ghost" data-act="gFilter" data-f="all">Show all guests</button>' : ''}${can && q && !/^\d+$/.test(q) ? `<button class="btn" data-act="newGuest" data-name="${esc(gQ.trim())}">${R.icon('plus')}Add “${esc(gQ.trim())}”</button>` : ''}</div></div>`}</div>`;
     },
     mount(el) { const s = el.querySelector('#gSearch'); s.addEventListener('input', () => { gQ = s.value; const p = s.selectionStart; R.render(); const n = document.getElementById('gSearch'); n.focus(); n.setSelectionRange(p, p); }); }
