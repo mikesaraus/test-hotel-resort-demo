@@ -834,10 +834,15 @@ fieldset.days legend{margin-bottom:6px;padding:0}
 @media screen and (max-width:520px){.nb-pair{grid-template-columns:1fr}}
 
 /* deposit block: shortcuts for 50% or the full amount, and a line saying what's left */
-.fx-quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.fx-q{border:1px solid #D6C8B3;background:#fff;color:var(--ink-2);border-radius:999px;padding:0 12px;min-height:34px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;font-variant-numeric:tabular-nums}
-.fx-q:hover{border-color:var(--lagoon);color:var(--lagoon)}
-.fx-q[aria-pressed="true"]{background:var(--lagoon-l);border-color:transparent;color:var(--lagoon)}
+/* one line: two halves of one control, as wide as the amount box */
+.fx-quick{display:flex;flex-wrap:nowrap;margin-top:8px;border:1px solid #D6C8B3;border-radius:999px;background:#fff;overflow:hidden}
+.fx-q{flex:1 1 0;min-width:0;display:inline-flex;align-items:center;justify-content:center;gap:5px;border:0;background:none;color:var(--ink-2);padding:0 8px;min-height:36px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;font-variant-numeric:tabular-nums}
+.fx-q + .fx-q{border-left:1px solid #D6C8B3}
+.fx-q b{color:var(--ink)}
+.fx-q:hover{background:#FDF7F5;color:var(--lagoon)}
+.fx-q:focus-visible{outline:3px solid var(--gold);outline-offset:-3px}
+.fx-q[aria-pressed="true"]{background:var(--lagoon-l);color:var(--lagoon)}
+.fx-q[aria-pressed="true"] b{color:var(--lagoon)}
 .fx-hint{font-size:13px;color:var(--ink-2);margin:6px 0 0}
 .fx-hint:empty{display:none}
 .fx-hint.bad{color:var(--hibiscus);font-weight:600}
