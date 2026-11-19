@@ -271,6 +271,22 @@
   };
   R.rerender = () => { R.save(); R.render(); };
 
+  // ---------- opened as files in Safari: the two pages can't share data ----------
+  // Safari gives every local file its own storage, so book.html and the back office each keep their own copy
+  // and a guest booking never reaches the front desk. Say so, and how to fix it (Start demo.command, or another browser).
+  R.fileNotice = force => {
+    const ua = navigator.userAgent, safari = /Safari\//.test(ua) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/.test(ua);
+    if (!force && !(location.protocol === 'file:' && safari)) return;
+    try { if (sessionStorage.getItem('camsair-file-notice') === 'off') return; } catch (e) { /* private mode */ }
+    if (document.getElementById('fileNotice')) return;
+    const n = document.createElement('div');
+    n.id = 'fileNotice'; n.className = 'file-notice'; n.setAttribute('role', 'status');
+    n.innerHTML = `<p><b>Bookings won't reach the other page in Safari.</b> Opened as files, each page keeps its own copy of the demo. Double-click <b>Start demo.command</b> in the demo folder, or use Chrome or Firefox.</p><button type="button" class="btn ghost sm" id="fileNoticeX">Got it</button>`;
+    document.body.prepend(n);
+    document.getElementById('fileNoticeX').onclick = () => { n.remove(); try { sessionStorage.setItem('camsair-file-notice', 'off'); } catch (e) { /* private mode */ } };
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => R.fileNotice()); else R.fileNotice();
+
   // ---------- pieces shared by the booking forms (room booking, cottage reservation) ----------
   R.fx = {
     // one-tap choices: radios that look like chips. list = [[value, label, disabled?, extraClass?]]

@@ -865,3 +865,8 @@ fieldset.days legend{margin-bottom:6px;padding:0}
 .fx-money:has(input:focus-visible){outline:3px solid var(--gold);outline-offset:2px}
 .fx-money input::-webkit-inner-spin-button,.fx-money input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 .nb .field.has-err .fx-money{border-color:var(--hibiscus)}
+
+/* shown only when the demo is opened as files in Safari (see R.fileNotice) */
+.file-notice{position:sticky;top:0;z-index:70;display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--sun-l);color:#5A3F0E;
+  padding:10px 16px;border-bottom:1px solid #E8D3A8;font-size:14px}
+.file-notice p{flex:1 1 320px;margin:0;max-width:90ch}

@@ -46,3 +46,7 @@ This file lists what the real build still needs.
 - Data Privacy Act: privacy notice, consent records, ID retention period, access logs, NPC registration if required.
 - Printing to the receipt printer and key card encoder.
 - Real report delivery (email / SMS) at the time set in Settings.
+
+## Running the demo
+
+Double-click **Start demo.command**. It opens the back office at http://localhost:8642 (the guest booking site is linked from the sidebar). Opened this way, bookings made on the guest site show up in the back office in every browser. Opening the HTML files directly also works in Chrome and Firefox, but not in Safari, which keeps a separate copy of the demo for each file; the pages show a notice when that happens.
