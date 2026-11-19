@@ -571,8 +571,8 @@
           </tbody></table></div></div>
         <div class="panel"><div class="ph"><h2>Cottage calendar</h2><div class="sp"><button class="btn ghost sm" data-act="evShift" data-n="-7">← Week</button><button class="btn ghost sm" data-act="evShift" data-n="0">Today</button><button class="btn ghost sm" data-act="evShift" data-n="7">Week →</button></div></div>
           <p class="small muted" style="margin-bottom:8px">D = day tour, N = night swim. Click + to reserve. Walk-ins can still take any cottage that is not reserved.</p>
-          <div class="tbl"><table class="avail"><thead><tr><th>Cottage</th>${days.map(d => `<th class="${d === bd() ? 'today-col' : ''}">${new Date(d + 'T12:00').toLocaleDateString('en-PH', { weekday: 'short' })}<br>${R.fmtShort(d)}</th>`).join('')}</tr></thead><tbody>
-          ${D.cottages.map(c => `<tr><td><b>${esc(c.name)}</b><div class="small muted">${c.cap} pax · ${R.money(c.price)}</div></td>${days.map(d => cell(c, d)).join('')}</tr>`).join('')}
+          <div class="tbl"><table class="avail cot-cal"><thead><tr><th>Cottage</th>${days.map(d => `<th class="${d === bd() ? 'today-col' : ''}">${new Date(d + 'T12:00').toLocaleDateString('en-PH', { weekday: 'short' })}<br>${R.fmtShort(d)}</th>`).join('')}</tr></thead><tbody>
+          ${D.cottages.map(c => `<tr><td class="cot-name"><div><b>${esc(c.name)}</b><div class="small muted">${c.cap} pax · ${R.money(c.price)}</div></div></td>${days.map(d => cell(c, d)).join('')}</tr>`).join('')}
           </tbody></table></div></div>`;
     }
   };

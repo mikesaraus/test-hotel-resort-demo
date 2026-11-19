@@ -206,6 +206,8 @@ td.down{color:var(--palm);font-weight:600}
 
 /* availability + cottage calendar */
 table.avail td.av{padding:3px;min-width:84px}
+/* cottage calendar: the name column is as wide as its longest line, up to 150px (longer names wrap inside it) */
+table.cot-cal td.cot-name > div{width:max-content;max-width:150px}
 .av-cell{display:flex;flex-direction:column;width:100%;border:0;border-radius:var(--r-s);padding:5px 6px;text-align:left;font:inherit;line-height:1.2}
 button.av-cell{cursor:pointer}
 button.av-cell:hover{outline:2px solid var(--lagoon)}
