@@ -1,7 +1,12 @@
 /* Dropdowns (select.js). Same look as the date buttons: the chosen value, a chevron, maroon when open. */
 .sel-trigger{display:flex;align-items:center;gap:8px;width:100%;text-align:left;cursor:pointer;background:#fff;color:var(--ink);font:inherit;font-weight:400;
   border:1px solid var(--line-strong);border-radius:var(--r-s);padding:7px 10px;min-height:38px}
+/* outside form fields: the same two sizes as the buttons (.btn and .btn.sm) */
+.sel-trigger{line-height:1.25}
 .sel-trigger.sel-inline{display:inline-flex;width:auto;max-width:100%;vertical-align:middle}
+.sel-trigger.sel-md{min-height:38px;padding:7px 10px 7px 13px;font-size:15px}
+.sel-trigger.sel-sm{min-height:32px;padding:4px 8px 4px 10px;font-size:13px;gap:6px}
+.sel-trigger.sel-sm .sel-chev{width:16px;height:16px}
 .sel-val{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sel-empty{color:var(--ink-3)}
 .sel-chev{width:18px;height:18px;flex:none;fill:none;stroke:var(--ink-3);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}

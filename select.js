@@ -18,7 +18,9 @@
     const hadFocus = document.activeElement === sel;
     if (!sel.id) sel.id = 'sel-' + (++uid);
     const t = document.createElement('button');
-    t.type = 'button'; t.className = 'sel-trigger' + (sel.closest('.field, .bk-field') ? '' : ' sel-inline') + (sel.className ? ' ' + sel.className : '');
+    // inside a form field it matches the boxes around it; a field laid out in a row is a toolbar, so it matches the buttons
+    const fld = sel.closest('.field, .bk-field'), inForm = fld && getComputedStyle(fld).flexDirection !== 'row';
+    t.type = 'button'; t.className = 'sel-trigger' + (inForm ? '' : ' sel-inline ' + sizeFor(sel)) + (sel.className ? ' ' + sel.className.replace(/\bsearch\b/, '').trim() : '');
     t.dataset.for = sel.id;
     t.setAttribute('aria-haspopup', 'listbox'); t.setAttribute('aria-expanded', 'false');
     if (sel.getAttribute('style')) t.setAttribute('style', sel.getAttribute('style'));
@@ -36,6 +38,15 @@
     t.addEventListener('keydown', e => { if (['ArrowDown', 'ArrowUp'].includes(e.key) || (e.key.length === 1 && /\S/.test(e.key) && !e.metaKey && !e.ctrlKey)) { e.preventDefault(); open(c, e.key.length === 1 ? e.key : ''); } });
     paint();
     if (hadFocus) t.focus();
+  }
+  // a dropdown outside a form field takes the size of the buttons around it: small next to small buttons
+  // and in tables or detail lists, regular in a toolbar with regular buttons
+  function sizeFor(sel) {
+    for (let el = sel.parentElement, i = 0; el && i < 3; el = el.parentElement, i++) {
+      if (el.querySelector('.btn.sm')) return 'sel-sm';
+      if (el.querySelector('.btn:not(.sm)')) return 'sel-md';
+    }
+    return sel.closest('td, dd, .tbl') ? 'sel-sm' : 'sel-md';
   }
   function labelOf(sel) {
     if (sel.getAttribute('aria-label')) return sel.getAttribute('aria-label');
