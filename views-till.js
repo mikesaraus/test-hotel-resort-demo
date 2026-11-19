@@ -417,13 +417,11 @@
           <label class="field">Mobile number<input id="evP" type="tel" inputmode="tel" placeholder="0917 123 4567"></label></div>
         <label class="field">Notes<textarea id="evNo" rows="2" placeholder="e.g. sound system, decorations from 3 pm"></textarea></label></section>
       <section class="nb-sec" aria-labelledby="evH4"><h3 id="evH4">Deposit</h3>
-        ${fx.chips('evDep', [['', 'Not yet'], ...['Cash', 'GCash', 'Maya', 'Bank transfer'].map(m => [m, m])], '', 'Deposit received')}
-        <div class="form" id="evPayW" hidden><label class="field">Amount (₱)<input id="evAmt" type="number" inputmode="numeric" min="0"></label>
-          <label class="field" id="evRefW">Payment reference<input id="evRef" spellcheck="false" placeholder="GCash or bank reference number"></label></div></section>
+        ${fx.payBox('ev', ['Cash', 'GCash', 'Maya', 'Bank transfer'])}</section>
       </div><aside class="nb-side"><div id="evQ" aria-live="polite"></div></aside></form>
       <div class="foot nb-foot"><p id="evErr" class="fx-err" role="alert"></p><button type="button" class="btn ghost" data-act="closeModal">Cancel</button><button type="submit" form="evForm" class="btn" id="evGo">Reserve</button></div>`, b => {
       const $ = x => b.querySelector(x), $$ = x => [...b.querySelectorAll(x)], form = $('#evForm');
-      let lastPrice = -1, amtTouched = false;
+      const pay = fx.pay(form, 'ev');
       // a staying guest: fill their details and keep the date inside their stay
       const pickStay = () => {
         const r = st.who === 'stay' && R.res($('#evR').value);
@@ -461,8 +459,7 @@
       };
       const paint = () => {
         const x = q(), stay = st.who === 'stay' && R.res($('#evR').value);
-        if (x.price !== lastPrice && !amtTouched) $('#evAmt').value = x.deposit;
-        lastPrice = x.price;
+        const paid = st.dep ? pay.update(st.dep, x.deposit, x.price, 'on the day') : 0;
         $('#evQ').innerHTML = `<div class="nb-sum"><h3>Reservation summary</h3>
           <p class="nb-sum-top"><b>${esc(x.c.name)}</b><span class="chip ${x.taken ? 'red' : 'green'}">${x.taken ? 'Reserved' : 'Free'}</span></p>
           <p class="muted">Holds ${x.c.cap}</p>
@@ -470,11 +467,11 @@
           <div class="nb-lines"><div class="nb-line"><span>${esc(x.c.kind)}</span><span>${R.money(x.c.price)}</span></div>
             ${x.pk ? `<div class="nb-line"><span>${esc(x.pk.name)}, ${x.pax} × ${R.money(x.pk.price)}</span><span>${R.money(x.pk.price * x.pax)}</span></div>` : ''}</div>
           <div class="nb-line total"><span>Total</span><b>${R.money(x.price)}</b></div>
-          <div class="nb-line nb-dep ${st.dep ? 'paid' : ''}"><span>${st.dep ? `Deposit by ${esc(st.dep)}` : `${R.S.rules.deposit}% deposit to confirm`}</span><b>${R.money(st.dep ? +$('#evAmt').value || 0 : x.deposit)}</b></div>
+          <div class="nb-line nb-dep ${st.dep ? 'paid' : ''}"><span>${st.dep ? `Paid by ${esc(st.dep)}` : `${R.S.rules.deposit}% deposit to confirm`}</span><b>${R.money(st.dep ? paid : x.deposit)}</b></div>
+          ${st.dep && paid > 0 && paid < x.price ? `<div class="nb-line"><span>Left to pay on the day</span><span>${R.money(x.price - paid)}</span></div>` : ''}
           <p class="small muted" style="margin-top:8px">${stay ? 'Entrance is free for the people on the room booking.' : `Entrance is paid on the day: adult ${R.money(D.entrance[st.session].adult)}, child ${R.money(D.entrance[st.session].child)}.`}</p>
           <p class="nb-sum-guest">${$('#evN').value.trim() ? `For <b>${esc($('#evN').value.trim())}</b>, ${fx.plural(x.pax, 'guest')}` : `<span class="muted">${fx.plural(x.pax, 'guest')}, no group name yet</span>`}</p></div>`;
         $('#evOverW').hidden = x.pax <= x.c.cap;
-        $('#evPayW').hidden = !st.dep; $('#evRefW').hidden = st.dep === 'Cash';
         $('#evGo').disabled = x.taken;
         $('#evGo').textContent = x.taken ? `${x.c.name} is reserved then` : `Reserve, ${R.money(x.price)}`;
         return x;
@@ -489,7 +486,6 @@
         if (name === 'evDep') { st.dep = e.target.value; paint(); if (st.dep) $('#evAmt').focus(); return; }
         if (name === 'evWho') { st.who = e.target.value; $('#evRW').hidden = st.who !== 'stay'; if (st.who === 'stay') $('#evR').focus(); else { $('#evR').value = ''; } pickStay(); paintKinds(); return; }
         if (id === 'evR') { pickStay(); paintKinds(); return; }
-        if (id === 'evAmt') amtTouched = true;
         if (id === 'evD' || id === 'evX') { fx.stepState(b); paintKinds(); return; }
         paint();
       });
@@ -508,11 +504,10 @@
         if ($('#evN').value.trim().length < 3) add('evN', 'Enter the group name.');
         if ($('#evP').value.replace(/\D/g, '').length < 7) add('evP', 'Enter a mobile number.');
         if (x.pax > x.c.cap && $('#evOver').value.trim().length < 5) add('evOver', `${x.pax} guests is more than ${x.c.name} holds (${x.c.cap}). Write why it's OK.`);
-        if (dep && !(amt > 0)) add('evAmt', 'Enter the deposit amount.');
-        if (dep && dep !== 'Cash' && $('#evRef').value.trim().length < 4) add('evRef', 'Enter the payment reference number.');
+        pay.check(add, dep, x.price);
         if (!fx.report(b, errs, $('#evErr'))) return;
         const v = { id: R.nextId('EV'), venue: x.c.id, date: x.date, session: st.session, name: $('#evN').value.trim(), phone: $('#evP').value.trim(), pax: x.pax, catering: x.pk, eta: $('#evE').value || '09:00', notes: $('#evNo').value.trim(), overNote: x.pax > x.c.cap ? $('#evOver').value.trim() : '', resId: stay ? stay.id : '', price: x.price, status: 'booked', payments: [], created: bd() };
-        if (dep) v.payments.push({ id: R.nextId('VP'), date: bd(), at: R.now(), amount: amt, method: dep, ref: $('#evRef').value.trim(), or: R.nextOR(), by: R.S.user, shift: R.S.shift.id });
+        if (dep) v.payments.push({ id: R.nextId('VP'), date: bd(), at: R.now(), amount: Math.round(amt), method: dep, ref: pay.ref(), note: pay.note(), or: R.nextOR(), by: R.S.user, shift: R.S.shift.id });
         R.S.venueBookings.push(v);
         if (v.resId) R.log('Cottage reserved', `${x.c.name}, ${R.fmtShort(v.date)} ${SESS[v.session].toLowerCase()}`, v.resId);
         R.log('Cottage reserved', `${x.c.name}, ${R.fmtShort(v.date)} ${SESS[v.session].toLowerCase()} · ${v.name} · ${R.money(v.price)}${dep ? ' · deposit ' + R.peso(amt) : ''}`, v.id);
@@ -526,7 +521,7 @@
       <dl class="kv">${v.resId ? `<dt>Staying guest</dt><dd><a href="#booking/${v.resId}" data-act="openRes" data-id="${v.resId}">${v.resId}</a> · entrance free for people on the booking</dd>` : ''}<dt>Date</dt><dd>${R.fmt(v.date)}, arriving around ${v.eta}</dd><dt>Guests</dt><dd>${v.pax}</dd><dt>Mobile</dt><dd>${esc(v.phone)}</dd>
         ${v.catering ? `<dt>Package</dt><dd>${esc(v.catering.name)} × ${v.pax} @ ${R.money(v.catering.price)}</dd>` : ''}${v.notes ? `<dt>Notes</dt><dd>${esc(v.notes)}</dd>` : ''}${v.overNote ? `<dt>Over capacity</dt><dd>${esc(v.overNote)}</dd>` : ''}
         <dt>Quoted</dt><dd>${R.money(v.price)} plus entrance fees on the day</dd>
-        <dt>Paid</dt><dd>${v.payments.map(p => `${R.peso(p.amount)} ${esc(p.method)} · ${p.or} · ${R.fmtShort(p.date)}`).join('<br>') || 'Nothing yet'}</dd>
+        <dt>Paid</dt><dd>${v.payments.map(p => `${R.peso(p.amount)} ${esc(p.method)} · ${p.or} · ${R.fmtShort(p.date)}${p.note ? ` · ${esc(p.note)}` : ''}`).join('<br>') || 'Nothing yet'}</dd>
         ${v.status === 'arrived' && v.saleId ? `<dt>Sale</dt><dd><a href="#" data-act="fdReceipt" data-id="${v.saleId}">Receipt</a></dd>` : ''}</dl>
       <div class="foot">${v.status === 'booked' && R.can('till') ? `<button class="btn ghost warn-text" data-act="cancelEvent" data-id="${v.id}">Cancel</button><button class="btn ghost" data-act="eventPay" data-id="${v.id}">Take deposit</button>${v.date === bd() ? `<button class="btn" data-act="fdArrive" data-id="${v.id}">Group has arrived</button>` : ''}` : '<button class="btn" data-act="closeModal">Close</button>'}</div>`);
   };

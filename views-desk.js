@@ -392,9 +392,8 @@
             <label class="field">Email (optional)<input id="nbEmail" type="email" spellcheck="false" placeholder="name@gmail.com"></label></div></div></div></section>
       <section class="nb-sec" aria-labelledby="nbH4"><h3 id="nbH4">How they booked</h3>
         ${chips('nbCh', srcs.map(s => [s, s]), st.ch, 'Booked through')}
-        ${chips('nbDep', [['', 'Not yet'], ...NB_PAY.map(m => [m, m])], '', 'Deposit received')}
-        <label class="field" id="nbRefW" hidden>Payment reference<input id="nbRef" spellcheck="false" placeholder="GCash or bank reference number"></label>
         <label class="field">Notes<textarea id="nbNotes" rows="2" placeholder="e.g. birthday cake at 7 pm, late arrival"></textarea></label></section>
+      <section class="nb-sec" aria-labelledby="nbH5"><h3 id="nbH5">Deposit</h3>${R.fx.payBox('nb', NB_PAY)}</section>
       </div><aside class="nb-side"><div id="nbQuote" aria-live="polite"></div></aside></form>
       <div class="foot nb-foot"><p id="nbErr" role="alert"></p><button type="button" class="btn ghost" data-act="closeModal">Cancel</button><button type="submit" form="nbForm" class="btn" id="nbGo">Create booking</button></div>`, b => {
       const $ = s => b.querySelector(s), $$ = s => [...b.querySelectorAll(s)];
@@ -453,7 +452,7 @@
       // ----- the summary -----
       const paint = () => {
         const x = q(), ota = /Agoda|Booking/.test(st.ch), dep = radio('nbDep'), room = radio('nbRoom');
-        const depAmt = Math.round(x.total * (dep === 'Prepaid on booking site' ? 1 : R.S.rules.deposit / 100));
+        const need = Math.round(x.total * R.S.rules.deposit / 100), depAmt = dep ? pay.update(dep, need, x.total, 'at check-in') : need;
         const seasons = [...new Set(x.rates.map((_, i) => (R.seasonOn(addDays(x.a, i)) || {}).name).filter(Boolean))];
         $('#nbQuote').innerHTML = `<div class="nb-sum"><h3>Booking summary</h3>
           <p class="nb-sum-top"><b>${esc(x.t.name)}</b><span class="chip ${x.left ? x.left <= 2 ? 'amber' : 'green' : 'red'}">${x.left ? `${x.left} free` : 'Sold out'}</span></p>
@@ -464,11 +463,11 @@
           ${seasons.length && !x.rate ? `<p class="small muted">${seasons.map(esc).join(', ')} pricing</p>` : ''}
           <div class="nb-line total"><span>Total</span><b>${R.money(x.total)}</b></div>
           ${ota ? `<div class="nb-line"><span>${esc(st.ch)} commission</span><span>${R.sourceFee(st.ch)}%</span></div>` : ''}
-          <div class="nb-line nb-dep ${dep ? 'paid' : ''}"><span>${dep ? `${dep === 'Prepaid on booking site' ? 'Prepaid' : 'Deposit'} by ${esc(dep === 'Prepaid on booking site' ? 'booking site' : dep)}` : `${R.S.rules.deposit}% deposit to confirm`}</span><b>${R.money(depAmt)}</b></div>
+          <div class="nb-line nb-dep ${dep ? 'paid' : ''}"><span>${dep ? `Paid by ${esc(dep === 'Prepaid on booking site' ? 'booking site' : dep)}` : `${R.S.rules.deposit}% deposit to confirm`}</span><b>${R.money(depAmt)}</b></div>
+          ${dep && depAmt > 0 && depAmt < x.total ? `<div class="nb-line"><span>Left to pay at check-in</span><span>${R.money(x.total - depAmt)}</span></div>` : ''}
           <p class="nb-sum-guest">${st.guest ? `For <b>${esc(st.guest.name)}</b>` : $('#nbGuest').value.trim().length > 2 ? `For <b>${esc($('#nbGuest').value.trim())}</b> (new guest)` : '<span class="muted">No guest picked yet</span>'}</p></div>`;
         $('#nbOverW').hidden = x.ppl <= x.t.cap;
         $('#nbRateNote').innerHTML = x.over ? `<p class="small">Below the season price of ${R.money(x.sum / x.n)}: ${R.can('rate') ? 'you can approve this.' : 'a supervisor approves with their PIN.'}</p>` : '';
-        $('#nbRefW').hidden = !dep || dep === 'Cash';
         $('#nbGo').disabled = !x.left;
         $('#nbGo').textContent = x.left ? `Create booking, ${R.money(x.total)}` : 'Sold out for these dates';
         return x;
@@ -476,7 +475,7 @@
       const clearErr = id => R.fx.clearErr(b, id);
 
       // ----- events (on the form: the dialog body is reused by every dialog, the form is new each time) -----
-      const form = $('#nbForm');
+      const form = $('#nbForm'), pay = R.fx.pay(form, 'nb');
       form.addEventListener('input', e => {
         const id = e.target.id, name = e.target.name;
         if (id) clearErr(id);
@@ -514,10 +513,10 @@
         if (!st.guest && name.length < 3) add('nbGuest', 'Enter the guest name, or pick a returning guest.');
         if (!st.guest && name.length >= 3 && $('#nbPhone').value.replace(/\D/g, '').length < 7) add('nbPhone', 'Enter a mobile number for the new guest.');
         if (x.ppl > x.t.cap && $('#nbOver').value.trim().length < 5) add('nbOver', `${x.ppl} guests is more than the ${x.t.name} sleeps (${x.t.cap}). Write why it's OK.`);
-        if (dep && dep !== 'Cash' && $('#nbRef').value.trim().length < 4) add('nbRef', 'Enter the payment reference number.');
+        pay.check(add, dep, x.total);
         if (!R.fx.report(b, errs, $('#nbErr'))) return;
         let g = st.guest;
-        const vals = { name, phone: $('#nbPhone').value.trim(), email: $('#nbEmail').value.trim(), ch: st.ch, adults: x.adults, children: x.children, room: radio('nbRoom'), rate: x.rate, dep, ref: $('#nbRef').value.trim(),
+        const vals = { name, phone: $('#nbPhone').value.trim(), email: $('#nbEmail').value.trim(), ch: st.ch, adults: x.adults, children: x.children, room: radio('nbRoom'), rate: x.rate, dep, amt: +$('#nbAmt').value || 0, ref: pay.ref(), payNote: pay.note(),
           notes: [$('#nbNotes').value.trim(), x.ppl > x.t.cap ? `Over capacity (${x.ppl} in a room for ${x.t.cap}): ${$('#nbOver').value.trim()}` : ''].filter(Boolean).join(' · ') };
         const create = by => {
           if (!g) { g = { id: R.nextId('G'), name: vals.name, email: vals.email, phone: vals.phone, town: '', tag: '', stays: 0, nationality: 'Filipino', idType: '', idNo: '' }; R.S.guests.unshift(g); }
@@ -526,7 +525,7 @@
           const r = { id: 'CR-' + (++R.S.seq), guestId: g.id, type: x.t.id, room, arrive: x.a, nights: x.n, rates, adults: vals.adults, children: vals.children, channel: vals.ch, status: 'booked', notes: vals.notes, folio: [], payments: [], reg: null, eta: '14:00', created: bd() };
           R.S.reservations.push(r);
           R.log('Booking created', `${x.t.name}, ${x.n}n from ${R.fmtShort(x.a)} · ${R.money(R.stayValue(r))}${vals.rate > 0 ? ' · rate set by hand' : ''}`, r.id, by);
-          if (vals.dep) R.addPayment(r, Math.round(R.stayValue(r) * (vals.dep === 'Prepaid on booking site' ? 1 : R.S.rules.deposit / 100)), vals.dep, vals.ref, R.S.user, 'Deposit');
+          if (vals.dep) R.addPayment(r, Math.round(vals.amt), vals.dep, vals.ref, R.S.user, vals.payNote ? 'Deposit: ' + vals.payNote : 'Deposit');
           R.closeModal(); R.rerender(); R.go('booking', r.id);
           R.toast(`Booking ${r.id} created${room ? ', room ' + room : ''}. Confirmation sent by text.`);
         };

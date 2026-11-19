@@ -286,6 +286,46 @@
       if (errs.length) { const el = root.querySelector('#' + errs[0][0]), t = el.hidden && el.id && document.querySelector(`[data-for="${el.id}"]`); (t || el).focus(); }
       return !errs.length;
     },
+    // deposit block shared by both booking forms: method, amount (50% filled in, can be more), reference unless cash, a payment note
+    payBox: (p, methods) => `${R.fx.chips(p + 'Dep', [['', 'Not yet'], ...methods.map(m => [m, esc(m)])], '', 'Payment received')}
+      <div class="fx-pay" id="${p}PayW" hidden><div class="form">
+        <label class="field">Amount received (₱)<input id="${p}Amt" type="number" inputmode="numeric" min="0"></label>
+        <label class="field" id="${p}RefW">Payment reference<input id="${p}Ref" spellcheck="false" placeholder="GCash or bank reference number"></label></div>
+        <div class="fx-quick" id="${p}Quick"></div><p class="fx-hint" id="${p}AmtHint" aria-live="polite"></p>
+        <label class="field">Payment note <span class="muted">(optional)</span><input id="${p}PayNote" placeholder="e.g. sent in 2 transfers, paid by Juan Dela Cruz"></label></div>`,
+    // the behaviour behind payBox; root is the form (new for every dialog)
+    pay: (root, p) => {
+      const $ = s => root.querySelector(s);
+      let touched = false;
+      root.addEventListener('input', e => { if (e.target.id === p + 'Amt') touched = true; });
+      root.addEventListener('click', e => {
+        const b = e.target.closest('[data-fxamt]'); if (!b) return;
+        const i = $('#' + p + 'Amt'); i.value = b.dataset.v; touched = true; i.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      return {
+        // need = the deposit asked for, total = the whole price, where = 'at check-in' / 'on the day'; returns the amount entered
+        update(method, need, total, where) {
+          $('#' + p + 'PayW').hidden = !method; $('#' + p + 'RefW').hidden = !method || method === 'Cash';
+          const i = $('#' + p + 'Amt');
+          if (!touched) i.value = method === 'Prepaid on booking site' ? total : need;
+          const a = Math.round(+i.value || 0);
+          $('#' + p + 'Quick').innerHTML = [[need, `${R.S.rules.deposit}% deposit, ${R.money(need)}`], [total, `Full amount, ${R.money(total)}`]].map(([v, l]) => `<button type="button" class="fx-q" data-fxamt data-v="${v}" aria-pressed="${a === v}">${l}</button>`).join('');
+          $('#' + p + 'AmtHint').className = 'fx-hint' + (a > total ? ' bad' : '');
+          $('#' + p + 'AmtHint').textContent = !method || !a ? '' : a > total ? `That's more than the total of ${R.money(total)}.` : a === total ? 'Paid in full.'
+            : a < need ? `${R.money(need - a)} less than the ${R.S.rules.deposit}% deposit. ${R.money(total - a)} left to pay ${where}.`
+            : a > need ? `${R.money(a - need)} more than the deposit. ${R.money(total - a)} left to pay ${where}.` : `${R.money(total - a)} left to pay ${where}.`;
+          return method ? a : 0;
+        },
+        check(add, method, total) {
+          if (!method) return;
+          const a = +$('#' + p + 'Amt').value || 0;
+          if (!(a > 0)) add(p + 'Amt', 'Enter the amount received.');
+          else if (a > total) add(p + 'Amt', `That's more than the total of ${R.money(total)}. Check the amount.`);
+          if (method !== 'Cash' && $('#' + p + 'Ref').value.trim().length < 4) add(p + 'Ref', 'Enter the payment reference number.');
+        },
+        note: () => $('#' + p + 'PayNote').value.trim(), ref: () => $('#' + p + 'Ref').value.trim()
+      };
+    },
     time12: t => { const [h, m] = t.split(':').map(Number); return `${(h + 11) % 12 + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : h === 12 && !m ? 'noon' : 'pm'}`; },
     plural: (n, w, ws) => `${n} ${n === 1 ? w : ws || w + 's'}`
   };

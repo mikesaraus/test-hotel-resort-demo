@@ -800,7 +800,7 @@ fieldset.days legend{margin-bottom:6px;padding:0}
 .modal.tall{display:flex;flex-direction:column;max-height:88vh;max-height:calc(100dvh - 12vh);padding-bottom:0;overflow:hidden}
 .modal.tall > header{flex:none}
 .modal.tall #modalBody{flex:1;min-height:0;display:flex;flex-direction:column}
-.modal.tall #modalBody > form{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;margin:0 -24px;padding:2px 24px 20px;
+.modal.tall #modalBody > form{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;margin:0 -24px;padding:2px 24px 40px;
   background:linear-gradient(rgba(255,253,249,0),var(--surface) 70%) 0 100%/100% 36px no-repeat local,
              radial-gradient(farthest-side at 50% 100%,rgba(43,27,24,.16),rgba(43,27,24,0)) 0 100%/100% 14px no-repeat scroll;
   background-color:var(--surface)}
@@ -820,7 +820,7 @@ fieldset.days legend{margin-bottom:6px;padding:0}
   /* phones: booking forms take the whole screen */
   .modal-back:has(.modal.tall){padding:0}
   .modal.tall{max-height:100dvh;height:100dvh;border-radius:0;padding:14px 16px 0}
-  .modal.tall #modalBody > form{margin:0 -16px;padding:2px 16px 20px}
+  .modal.tall #modalBody > form{margin:0 -16px;padding:2px 16px 36px}
   .modal.tall .nb-foot{margin:0 -16px;padding:10px 16px calc(12px + env(safe-area-inset-bottom));border-radius:0}
   .nb-foot .btn{flex:1;justify-content:center}
 }
@@ -830,3 +830,12 @@ fieldset.days legend{margin-bottom:6px;padding:0}
 .nb-chip.taken span{border-style:dashed;color:var(--ink-3)}
 .nb-chip input:disabled + span{opacity:.55;cursor:not-allowed}
 @media screen and (max-width:520px){.nb-pair{grid-template-columns:1fr}}
+
+/* deposit block: shortcuts for 50% or the full amount, and a line saying what's left */
+.fx-quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.fx-q{border:1px solid #D6C8B3;background:#fff;color:var(--ink-2);border-radius:999px;padding:0 12px;min-height:34px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;font-variant-numeric:tabular-nums}
+.fx-q:hover{border-color:var(--lagoon);color:var(--lagoon)}
+.fx-q[aria-pressed="true"]{background:var(--lagoon-l);border-color:transparent;color:var(--lagoon)}
+.fx-hint{font-size:13px;color:var(--ink-2);margin:6px 0 0}
+.fx-hint:empty{display:none}
+.fx-hint.bad{color:var(--hibiscus);font-weight:600}
