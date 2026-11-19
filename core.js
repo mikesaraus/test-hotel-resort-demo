@@ -290,9 +290,9 @@
     // the amount's shortcuts and "what's left" line sit under the amount; the reference asks for what that method gives you
     payBox: (p, methods) => `${R.fx.chips(p + 'Dep', [['', 'Not yet'], ...methods.map(m => [m, esc(m)])], '', 'Payment received')}
       <div class="fx-pay" id="${p}PayW" hidden><div class="form fx-pay-row">
-        <div class="field"><label for="${p}Amt">Amount received</label><div class="fx-money"><span aria-hidden="true">₱</span><input id="${p}Amt" type="number" inputmode="numeric" min="0" step="1" aria-describedby="${p}AmtHint"></div>
-          <div class="fx-quick" id="${p}Quick" role="group" aria-label="Fill in the amount"></div><p class="fx-hint" id="${p}AmtHint" aria-live="polite"></p></div>
+        <div class="field"><label for="${p}Amt">Amount received</label><div class="fx-money"><span aria-hidden="true">₱</span><input id="${p}Amt" type="number" inputmode="numeric" min="0" step="1" aria-describedby="${p}AmtHint"></div></div>
         <label class="field" id="${p}RefW"><span id="${p}RefL">Reference number</span><input id="${p}Ref" spellcheck="false" autocomplete="off"></label></div>
+        <div class="fx-quick" id="${p}Quick" role="group" aria-label="Fill in the amount"></div><p class="fx-hint" id="${p}AmtHint" aria-live="polite"></p>
         <label class="field"><span>Payment note <span class="muted">(optional)</span></span><input id="${p}PayNote" placeholder="e.g. sent in 2 transfers, paid by Juan Dela Cruz"></label></div>`,
     // what the reference field asks for, per payment method
     payRef: m => ({ GCash: ['GCash reference number', 'From the GCash receipt'], Maya: ['Maya reference number', 'From the Maya receipt'],
@@ -317,7 +317,7 @@
           const i = $('#' + p + 'Amt');
           if (!touched) i.value = method === 'Prepaid on booking site' ? total : need;
           const a = Math.round(+i.value || 0);
-          $('#' + p + 'Quick').innerHTML = [[need, `${R.S.rules.deposit}%`, `${R.S.rules.deposit}% deposit`], [total, 'Full', 'Full amount']].map(([v, l, say]) => `<button type="button" class="fx-q" data-fxamt data-v="${v}" aria-pressed="${a === v}" aria-label="${say}, ${R.money(v)}"><b>${l}</b>${R.money(v)}</button>`).join('');
+          $('#' + p + 'Quick').innerHTML = [[need, `${R.S.rules.deposit}%`, ' deposit'], [total, 'Full', ' amount']].map(([v, l, more]) => `<button type="button" class="fx-q" data-fxamt data-v="${v}" aria-pressed="${a === v}"><b>${l}<span class="fx-more">${more}</span></b>${R.money(v)}</button>`).join('');
           $('#' + p + 'AmtHint').className = 'fx-hint' + (a > total ? ' bad' : a && a < need ? ' warn' : '');
           $('#' + p + 'AmtHint').textContent = !method || !a ? '' : a > total ? `That's more than the total of ${R.money(total)}.` : a === total ? 'Paid in full.'
             : a < need ? `${R.money(need - a)} short of the ${R.S.rules.deposit}% deposit. ${R.money(total - a)} left to pay ${where}.`
