@@ -382,6 +382,11 @@
   const SESS = { day: 'Day tour', night: 'Night swim' };
   const vTaken = (venue, date, session, except) => R.S.venueBookings.some(v => v.id !== except && v.venue === venue && v.date === date && v.session === session && (v.status === 'booked' || v.status === 'arrived'));
   let evStart = null;
+  // cottage calendar: the name column gets its edge shadow only once the days are scrolled sideways
+  document.addEventListener('scroll', e => {
+    const box = e.target;
+    if (box.classList && box.classList.contains('tbl') && box.querySelector(':scope > table.cot-cal')) box.classList.toggle('is-scrolled', box.scrollLeft > 0);
+  }, true);
   R.act.evShift = d => { evStart = d.n === '0' ? bd() : addDays(evStart, +d.n); if (evStart < bd()) evStart = bd(); R.render(); };
 
   R.act.newEvent = d => {
