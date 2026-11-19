@@ -648,8 +648,6 @@ fieldset.days legend{margin-bottom:6px;padding:0}
 .phone-wrap{display:grid;grid-template-columns:390px 1fr;gap:30px;align-items:start}
 .phone{width:375px;height:760px;border-radius:44px;background:#2B1B18;padding:14px;box-shadow:0 20px 50px rgba(43,27,24,.25)}
 .screen{background:#FBF8F2;border-radius:32px;height:100%;overflow:auto;position:relative}
-.g-hero{background:#5E1A1F;color:#fff;padding:36px 20px 22px;border-radius:32px 32px 22px 22px}
-.g-hero h2{font-family:var(--head);font-weight:400;font-size:24px;margin:6px 0 2px}
 .g-body{padding:16px}
 .g-card{background:#fff;border-radius:16px;padding:14px;margin-bottom:12px;border:1px solid var(--line)}
 .g-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
@@ -922,19 +920,18 @@ h2 .g-n{vertical-align:2px;margin-left:4px}
 .g-empty p{margin:4px 0 12px}
 .g-empty .row{justify-content:center}
 
-.g-hero{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:14px}
-.g-av{width:56px;height:56px;font-size:19px}
-.g-hero-main{flex:1 1 260px;min-width:0}
 .g-chips{gap:6px;margin-bottom:6px}
 .g-chips:empty{display:none}
-.g-contact{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:15px;font-weight:600;margin-bottom:4px;overflow-wrap:anywhere}
-.g-contact .i{color:var(--ink-3);margin-right:4px}
-.g-quick{display:flex;flex-wrap:wrap;gap:6px}
 .g-cot{width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);cursor:pointer;font:inherit;color:inherit;padding:10px 4px}
 .g-cot:first-of-type{border-top:0}
 .g-cot:hover{background:#FDF9F3}
 .g-cot .grow{display:flex;flex-direction:column}
 .eg-dup{margin-top:10px}
+/* the guest dialog has no summary column, so the form takes the full width */
+.nb.eg{grid-template-columns:1fr}
+.eg .nb-main{gap:18px}
+/* filters: label and count on one line */
+.g-filters button{flex-direction:row;align-items:center;gap:6px}
 .eg .nb-set .nb-chips{gap:6px}
 
 /* phones: each guest as a card instead of a table row */
@@ -953,5 +950,12 @@ h2 .g-n{vertical-align:2px;margin-left:4px}
   .g-tbl td:nth-child(5){grid-column:1;text-align:left}
   .g-tbl td:nth-child(6){grid-column:2}
   .g-sort{flex:1}
-  .g-quick .btn{flex:1;justify-content:center}
+  .g-filters{display:flex;flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none} /* one row that scrolls sideways */
+  .g-filters button{flex:none;white-space:nowrap}
 }
+
+.g-sub{font-size:12px;font-weight:700;color:var(--ink-3);margin:10px 0 2px}
+.g-sub:first-of-type{margin-top:0}
+.g-copy{border:0;background:none;color:var(--lagoon);font:600 12px var(--body);cursor:pointer;padding:4px 6px;min-height:28px;border-radius:6px;text-decoration:underline;text-underline-offset:2px}
+.g-copy:hover{background:var(--lagoon-l)}
+.eg-sub{font-size:12px;font-weight:500;margin-left:6px}

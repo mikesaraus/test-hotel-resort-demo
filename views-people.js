@@ -79,17 +79,17 @@
     R.modal(isNew ? 'New guest' : 'Edit guest', `<form class="nb eg" id="egForm" novalidate><div class="nb-main">
       <section class="nb-sec" aria-labelledby="egH1"><h3 id="egH1">Name</h3>
         <label class="field">Full name<input id="egN" value="${esc(g.name)}" autocomplete="off" autocapitalize="words" placeholder="As on their ID, e.g. Maria Santos"></label>
-        ${R.fx.chips('egTag', [['', 'No tag'], ...TAGS.concat(g.tag && !TAGS.includes(g.tag) ? [g.tag] : []).map(t => [t, esc(t)])], g.tag || '', 'Tag <span class="muted">(shown on bookings and the arrivals list)</span>')}</section>
+        ${R.fx.chips('egTag', [['', 'No tag'], ...TAGS.concat(g.tag && !TAGS.includes(g.tag) ? [g.tag] : []).map(t => [t, esc(t)])], g.tag || '', 'Tag')}</section>
       <section class="nb-sec" aria-labelledby="egH2"><h3 id="egH2">Contact</h3>
         <div class="form"><label class="field">Mobile number<input id="egP" type="tel" inputmode="tel" value="${esc(g.phone)}" placeholder="0917 123 4567" autocomplete="off"></label>
           <label class="field"><span>Email <span class="muted">(optional)</span></span><input id="egE" type="email" value="${esc(g.email)}" placeholder="name@gmail.com" spellcheck="false" autocomplete="off"></label></div>
         <div id="egDup"></div>
         <div class="form"><label class="field"><span>Town or city <span class="muted">(optional)</span></span><input id="egT" value="${esc(g.town)}" placeholder="e.g. Cagayan de Oro"></label>
           <label class="field">Nationality<select id="egNa">${nations.map(n => `<option ${n === nat ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label></div></section>
-      <section class="nb-sec" aria-labelledby="egH3"><h3 id="egH3">ID on file</h3>
+      <section class="nb-sec" aria-labelledby="egH3"><h3 id="egH3">ID on file <span class="muted eg-sub">usually taken at check-in</span></h3>
         <div class="form"><label class="field">ID type<select id="egIdT"><option value="">Not taken yet</option>${R.ID_TYPES.map(x => `<option ${x === g.idType ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
           <label class="field">ID number<input id="egIdN" value="${esc(g.idNo || '')}" placeholder="As printed on the ID" autocomplete="off" spellcheck="false"></label></div>
-        <p class="small muted" style="margin-top:6px">Usually taken at check-in. Only staff who can see guest details see it.</p></section>
+      </section>
       <section class="nb-sec" aria-labelledby="egH4"><h3 id="egH4">Preferences and notes</h3>
         <label class="field"><span>Notes <span class="muted">(shown at check-in and on the arrivals list)</span></span><textarea id="egPr" rows="3" placeholder="e.g. likes a ground floor room, allergic to shrimp, birthday on 12 March">${esc(g.prefs || '')}</textarea></label></section>
       </div></form>
@@ -139,23 +139,19 @@
       const ids = new Set(rs.map(r => r.id)), cots = R.S.venueBookings.filter(v => (v.guestId === g.id || ids.has(v.resId)) && v.status !== 'cancelled').sort((a, b) => b.date.localeCompare(a.date));
       const first = rs.map(r => r.arrive).sort()[0], tel = (g.phone || '').replace(/[^\d+]/g, '');
       const resTable = L => `<div class="tbl"><table><tbody>${L.map(r => R.resRow(r, `<span class="num small">${R.money(R.total(r) || R.stayValue(r))}</span>`)).join('')}</tbody></table></div>`;
-      return `<div class="bk-head"><a class="btn ghost sm" href="#guests">${R.icon('back')}Guests</a>
-          <div class="sp row">${can ? `<button class="btn ghost sm" data-act="editGuest" data-id="${g.id}">Edit guest</button>${next ? `<button class="btn ghost sm" data-act="msgGuest" data-id="${next.id}">Message guest</button>` : ''}<button class="btn sm" data-act="newBooking" data-guest="${g.id}">${R.icon('plus')}New booking</button>` : ''}</div></div>
-        <div class="panel g-hero"><span class="avatar g-av ${g.tag === 'VIP' ? 'vip' : ''}" aria-hidden="true">${esc(R.initials(g.name))}</span>
-          <div class="g-hero-main"><div class="row g-chips">${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}${nowChip(g)}${pastStays(g) >= 2 ? '<span class="chip green">Repeat guest</span>' : ''}</div>
-            <p class="g-contact"><span>${R.icon('phone')}${esc(g.phone) || '<span class="muted">No mobile</span>'}</span>${g.email ? `<span>${esc(g.email)}</span>` : ''}${g.town ? `<span>${esc(g.town)}</span>` : ''}</p>
-            <p class="small muted">${first ? `Guest since ${new Date(first + 'T12:00').toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}` : 'No stays yet'}${fav ? `. Usually books through ${esc(fav[0])}` : ''}.</p></div>
-          ${g.phone ? `<div class="g-quick">${tel ? `<a class="btn ghost sm" href="tel:${esc(tel)}">Call</a><a class="btn ghost sm" href="sms:${esc(tel)}">Text</a>` : ''}${g.email ? `<a class="btn ghost sm" href="mailto:${esc(g.email)}">Email</a>` : ''}<button class="btn ghost sm" data-act="gCopy" data-v="${esc(g.phone)}">Copy mobile</button></div>` : ''}</div>
-        <div class="pulse pulse5"><div><b>${pastStays(g)}</b><span>Stays</span></div><div><b>${nights}</b><span>Nights stayed</span></div><div><b>${R.money(spendOf(g))}</b><span>Total spend</span></div>
-          <div><b>${nights ? R.money(roomRev / nights) : '—'}</b><span>Average room rate</span></div><div><b>${next ? R.fmtShort(next.arrive) : '—'}</b><span>${next && next.status === 'inhouse' ? 'In house since' : 'Next arrival'}</span></div></div>
+      const staysNow = pastStays(g) + (rs.some(r => r.status === 'inhouse') ? 1 : 0);
+      return `<div class="bk-head"><a class="btn ghost sm" href="#guests">${R.icon('back')}Guests</a><span class="row g-chips">${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}${nowChip(g)}${staysNow >= 2 ? '<span class="chip green">Repeat guest</span>' : ''}</span>
+          <div class="sp row">${can ? `${next ? `<button class="btn ghost sm" data-act="msgGuest" data-id="${next.id}">Message guest</button>` : ''}<button class="btn ghost sm" data-act="editGuest" data-id="${g.id}">Edit guest</button><button class="btn sm" data-act="newBooking" data-guest="${g.id}">${R.icon('plus')}New booking</button>` : ''}</div></div>
+        <div class="pulse pulse5"><div><b>${staysNow}</b><span>${rs.some(r => r.status === 'inhouse') ? 'Stays, this one included' : 'Stays'}</span></div><div><b>${nights}</b><span>Nights stayed</span></div><div><b>${R.money(spendOf(g))}</b><span>Total spend</span></div>
+          <div><b>${nights ? R.money(roomRev / nights) : '—'}</b><span>Average room rate</span></div><div><b>${next ? R.fmtShort(next.status === 'inhouse' ? R.dep(next) : next.arrive) : '—'}</b><span>${next && next.status === 'inhouse' ? 'Checks out' : 'Next arrival'}</span></div></div>
         <div class="grid g-side"><div class="stack">
-          ${ahead.length ? `<div class="panel"><h2>Coming up</h2>${resTable(ahead)}</div>` : ''}
-          <div class="panel"><h2>Past stays <span class="g-n">${past.length}</span></h2>${past.length ? resTable(past) : `<p class="empty">${ahead.length ? 'This is their first stay.' : 'No stays yet.'}${can && !ahead.length ? ` <button class="btn ghost sm" data-act="newBooking" data-guest="${g.id}">Make a booking</button>` : ''}</p>`}</div>
+          <div class="panel"><h2>Stays</h2>${rs.length ? `${ahead.length ? `<p class="g-sub">Coming up</p>${resTable(ahead)}` : ''}${past.length ? `<p class="g-sub">Past</p>${resTable(past)}` : ''}`
+            : `<p class="empty">No stays yet.${can ? ` <button class="btn ghost sm" data-act="newBooking" data-guest="${g.id}">Make a booking</button>` : ''}</p>`}</div>
           ${cots.length ? `<div class="panel"><h2>Cottage reservations <span class="g-n">${cots.length}</span></h2>${cots.map(v => `<button class="list-item g-cot" data-act="openEvent" data-id="${v.id}"><span class="grow"><b>${esc(R.venue(v.venue).name)}</b><span class="small muted">${R.fmt(v.date)}, ${v.session === 'day' ? 'day tour' : 'night swim'}, ${v.pax} guests</span></span>${R.chip(v.status === 'arrived' ? 'done' : v.status === 'booked' ? 'booked' : v.status)}</button>`).join('')}</div>` : ''}
           ${dups.length ? `<div class="panel"><h2>Possible duplicates</h2><p class="small muted" style="margin-bottom:6px">Same name or the same mobile number. Merge them so the history is in one place.</p>${dups.map(x => `<div class="list-item"><span class="avatar sm">${R.initials(x.name)}</span><div class="grow small"><b>${esc(x.name)}</b> · ${esc(x.phone)}<div class="muted">${staysOf(x).length} booking(s)</div></div>${can ? `<button class="btn ghost sm" data-act="mergeGuest" data-keep="${g.id}" data-drop="${x.id}">Merge into this profile</button>` : ''}</div>`).join('')}</div>` : ''}
         </div><div class="stack">
-          <div class="panel"><div class="ph"><h2>Details</h2>${can ? `<button class="btn ghost sm" data-act="editGuest" data-id="${g.id}">Edit</button>` : ''}</div>
-            <dl class="kv"><dt>Mobile</dt><dd>${esc(g.phone) || '—'}</dd><dt>Email</dt><dd>${esc(g.email) || '—'}</dd><dt>From</dt><dd>${esc(g.town) || '—'}</dd><dt>Nationality</dt><dd>${esc(g.nationality) || '—'}</dd>
+          <div class="panel"><h2>Details</h2>
+            <dl class="kv"><dt>Mobile</dt><dd>${g.phone ? `<a href="tel:${esc(tel)}">${esc(g.phone)}</a> <button class="g-copy" data-act="gCopy" data-v="${esc(g.phone)}" aria-label="Copy mobile number">Copy</button>` : '—'}</dd><dt>Email</dt><dd>${g.email ? `<a href="mailto:${esc(g.email)}">${esc(g.email)}</a>` : '—'}</dd><dt>From</dt><dd>${esc(g.town) || '—'}</dd><dt>Nationality</dt><dd>${esc(g.nationality) || '—'}</dd>${first ? `<dt>Guest since</dt><dd>${new Date(first + 'T12:00').toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}</dd>` : ''}${fav ? `<dt>Books through</dt><dd>${esc(fav[0])}</dd>` : ''}
             <dt>ID on file</dt><dd>${g.idNo ? `${esc(g.idType)} · ${esc(g.idNo.replace(/.(?=.{3})/g, '•'))}` : '<span class="muted">Taken at check-in</span>'}</dd></dl></div>
           <div class="panel"><h2>Preferences and notes</h2><p class="small muted" style="margin-bottom:6px">Shown at check-in, on the booking and on the arrivals list. Saved when you click away.</p>
             <textarea class="search" style="width:100%" rows="4" data-change="guestNotes" data-id="${g.id}" ${can ? '' : 'disabled'} placeholder="e.g. likes a ground floor room, allergic to shrimp, birthday on 12 March" aria-label="Guest notes">${esc(g.prefs)}</textarea></div>
