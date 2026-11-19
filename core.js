@@ -97,6 +97,14 @@
     return !R.S.reservations.some(r => r.id !== exceptId && r.room === no && (r.status === 'booked' || r.status === 'inhouse') && overlaps(arrive, nights, r.arrive, r.nights));
   };
   R.freeRooms = (type, arrive, nights, exceptId) => R.S.rooms.filter(r => (!type || r.type === type) && R.roomFree(r.no, arrive, nights, exceptId));
+  // the room to give a new booking: for an arrival today, a ready room first (inspected, then clean, then one still
+  // being cleaned), so the guest can be checked in straight away; for later dates, the usual order
+  R.bestRoom = (type, arrive, nights) => {
+    const free = R.freeRooms(type, arrive, nights);
+    if (arrive > R.bd()) return free[0] || null;
+    const rank = r => r.hk === 'inspected' ? 0 : r.hk === 'clean' ? 1 : 2;
+    return free.slice().sort((a, b) => rank(a) - rank(b))[0] || null;
+  };
   R.typeAvail = function (type, arrive, nights, exceptId) {
     const unassigned = R.S.reservations.filter(r => r.id !== exceptId && r.type === type && !r.room && r.status === 'booked' && overlaps(arrive, nights, r.arrive, r.nights)).length;
     return Math.max(0, R.freeRooms(type, arrive, nights, exceptId).length - unassigned);

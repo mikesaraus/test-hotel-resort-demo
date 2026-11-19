@@ -31,7 +31,7 @@
     if (!r.room) return [false, 'Assign a room first'];
     const room = R.room(r.room);
     if (room.ooo) return [false, `Room ${r.room} is out of order`];
-    if (room.hk === 'dirty') return [false, `Room ${r.room} is still dirty`];
+    if (room.hk === 'dirty') return [false, `Room ${r.room} is still dirty. Mark it clean in Room status, or give the guest another room on the booking.`];
     return [true, ''];
   }
   R.canCheckIn = canCheckIn;
@@ -523,7 +523,7 @@
         const create = by => {
           if (!g) { g = { id: R.nextId('G'), name: vals.name, email: vals.email, phone: vals.phone, town: '', tag: '', stays: 0, nationality: 'Filipino', idType: '', idNo: '' }; R.S.guests.unshift(g); }
           const rates = vals.rate > 0 ? x.rates.map(() => vals.rate) : x.rates;
-          const room = vals.room || (R.freeRooms(x.t.id, x.a, x.n)[0] || {}).no || null;
+          const room = vals.room || (R.bestRoom(x.t.id, x.a, x.n) || {}).no || null;
           const r = { id: 'CR-' + (++R.S.seq), guestId: g.id, type: x.t.id, room, arrive: x.a, nights: x.n, rates, adults: vals.adults, children: vals.children, channel: vals.ch, status: 'booked', notes: vals.notes, folio: [], payments: [], reg: null, eta: '14:00', created: bd() };
           R.S.reservations.push(r);
           R.log('Booking created', `${x.t.name}, ${x.n}n from ${R.fmtShort(x.a)} · ${R.money(R.stayValue(r))}${vals.rate > 0 ? ' · rate set by hand' : ''}`, r.id, by);
@@ -741,7 +741,7 @@
         R.S.groups.push(grp);
         R.S.roomTypes.forEach(t => {
           for (let i = 0; i < (counts[t.id] || 0); i++) {
-            const room = (R.freeRooms(t.id, q.a, q.n)[0] || {}).no || null;
+            const room = (R.bestRoom(t.id, q.a, q.n) || {}).no || null;
             const r = { id: 'CR-' + (++R.S.seq), guestId: g.id, type: t.id, room, arrive: q.a, nights: q.n, rates: R.quote(t.id, q.a, q.n), adults: Math.min(2, t.cap), children: 0, channel: $('#ggCh').value, status: 'booked', notes: 'Group: ' + name, folio: [], payments: [], reg: null, eta: '14:00', created: bd(), group: grp.id };
             R.S.reservations.push(r);
             if (!grp.master) grp.master = r.id;

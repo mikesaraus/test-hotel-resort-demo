@@ -235,7 +235,7 @@
     if (B.tab === 'stay') {
       const t = R.type(B.type), n = nights();
       if (R.typeAvail(t.id, B.arrive, n) < 1) return { error: `Sorry, the last ${t.name} for these dates was just booked. Please choose another room.` };
-      const rates = R.quote(t.id, B.arrive, n), room = (R.freeRooms(t.id, B.arrive, n)[0] || {}).no || null;
+      const rates = R.quote(t.id, B.arrive, n), room = (R.bestRoom(t.id, B.arrive, n) || {}).no || null;
       const r = { id: 'CR-' + (++R.S.seq), guestId: g.id, type: t.id, room, arrive: B.arrive, nights: n, rates, adults: B.adults, children: B.children, channel: 'Website', status: 'booked', notes: B.requests.trim(), folio: [], payments: [], reg: null, eta: B.eta, created: bd() };
       const total = rates.reduce((a, b) => a + b, 0), dep = depositOf(total);
       r.payments.push(payment(dep));
