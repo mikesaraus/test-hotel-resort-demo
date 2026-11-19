@@ -355,94 +355,195 @@
   };
 
   // ---------- new booking ----------
+  // One screen in the order the desk asks: when and how many, which room (with what's free and the price), who, how they booked and paid.
+  // A summary on the side always shows the total and the deposit.
   R.act.newBooking = d => R.newBooking(d || {});
+  const NB_PAY = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer', 'Prepaid on booking site'];
+  const nbPlural = (n, w, ws) => `${n} ${n === 1 ? w : ws || w + 's'}`;
+  if (window.DP) {
+    // the arrival calendar shows how many rooms are free each night
+    DP.info.nbFree = d => { const n = R.freeRooms(null, d, 1).length; return n ? { text: `${n} free`, tone: n <= 2 ? 'few' : '', note: nbPlural(n, 'room') + ' free' } : { text: 'Full', full: true, note: 'every room taken' }; };
+    DP.info.nbFree.legend = () => 'Rooms free each night, all types. <i style="background:#8A5F1C"></i>2 or fewer left <i style="background:var(--hibiscus)"></i>Full';
+  }
   R.newBooking = function (pre) {
     if (!R.need('book')) return;
-    const types = R.S.roomTypes, srcs = R.S.sources.map(s => s.name);
-    R.modal('New booking', `<div class="form">
-      <label class="field full">Guest<input id="nbGuest" list="nbGuests" placeholder="Type a name: returning guests appear in the list" autocomplete="off" autofocus>
-        <datalist id="nbGuests">${R.S.guests.map(g => `<option value="${esc(g.name)} — ${g.id}">${esc(g.town)}${g.tag ? ' · ' + esc(g.tag) : ''}</option>`).join('')}</datalist></label>
-      <div class="full" id="nbDup"></div>
-      <div class="full form" id="nbNewWrap" style="grid-template-columns:1fr 1fr">
-        <label class="field">Mobile (new guest)<input id="nbPhone" placeholder="+63 9xx xxx xxxx"></label>
-        <label class="field">Email (optional)<input id="nbEmail" type="email" placeholder="name@example.com"></label></div>
-      <label class="field">Room type<select id="nbType">${types.map(t => `<option value="${t.id}" ${pre.type === t.id ? 'selected' : ''}>${esc(t.name)} (sleeps ${t.cap})</option>`).join('')}</select></label>
-      <label class="field">Booked through<select id="nbCh">${srcs.map(c => `<option ${(pre.ch || 'Facebook Messenger') === c ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-      <label class="field">Arrival<input id="nbArr" type="date" value="${pre.date || bd()}" min="${bd()}"></label>
-      <label class="field">Nights<input id="nbN" type="number" value="1" min="1" max="30"></label>
-      <label class="field">Adults<input id="nbA" type="number" value="2" min="1" max="10"></label>
-      <label class="field">Children<input id="nbC" type="number" value="0" min="0" max="8"></label>
-      <label class="field">Room<select id="nbRoom"></select></label>
-      <label class="field">Rate per night (₱)<input id="nbRate" type="number" min="1" placeholder="Season price"></label>
-      <div class="full" id="nbQuote"></div>
-      <label class="field">Deposit received<select id="nbDep"><option value="">Not yet</option>${['GCash', 'Cash', 'Maya', 'Card', 'Bank transfer', 'Prepaid on booking site'].map(m => `<option>${m}</option>`).join('')}</select></label>
-      <label class="field">Deposit reference<input id="nbRef" placeholder="GCash / bank reference"></label>
-      <label class="field full" id="nbOverW" hidden>Over capacity: why is it OK? (required)<input id="nbOver" placeholder="e.g. extra mattress ₱500, 1 baby in a crib"></label>
-      <label class="field full">Notes<input id="nbNotes" placeholder="e.g. birthday cake at 7 pm, late arrival"></label></div>
-      <p class="small warn-text" id="nbErr" style="min-height:1.4em;margin-top:8px"></p>
-      <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="nbGo">Create booking</button></div>`, b => {
-      const $ = s => b.querySelector(s);
-      const found = () => { const m = $('#nbGuest').value.match(/ — (G\d+)$/); return m ? R.guest(m[1]) : null; };
-      let lastKey = '';
-      if (pre.guest) { const pg = R.findGuest(pre.guest); $('#nbGuest').value = pg.name + ' — ' + pg.id; }
-      b.addEventListener('click', e => { const p = e.target.closest('[data-pick]'); if (p) { e.preventDefault(); $('#nbGuest').value = p.dataset.pick; quote(); } });
-      const quote = () => {
-        $('#nbNewWrap').style.display = found() || !$('#nbGuest').value.trim() ? 'none' : '';
-        // returning guest? warn before a duplicate profile is made
-        const nm = $('#nbGuest').value.trim().toLowerCase(), ph = $('#nbPhone').value.replace(/\D/g, '');
-        const dups = found() || nm.length < 3 ? [] : R.S.guests.filter(g => g.name.toLowerCase() === nm || g.name.toLowerCase().startsWith(nm + ' ') || (ph.length >= 7 && g.phone.replace(/\D/g, '').endsWith(ph.slice(-7)))).slice(0, 3);
-        $('#nbDup').innerHTML = dups.length ? `<div class="note warn">${R.icon('users')}<div><b>Already a guest?</b> Use the existing profile so their history stays in one place.<div class="row" style="margin-top:6px">${dups.map(g => `<button class="btn sm ghost" data-pick="${esc(g.name)} — ${g.id}">${esc(g.name)} · ${esc(g.phone)}</button>`).join('')}</div></div></div>` : '';
-        const t = R.type($('#nbType').value), n = Math.max(1, +$('#nbN').value || 1), a = $('#nbArr').value;
-        const rates = R.quote(t.id, a, n), late = $('#nbCh').value === 'Walk-in' && a === bd() && R.seasonOn(bd(), null, 'walkin', R.now());
-        if (late) rates[0] = Math.round(rates[0] * (1 + late.pct / 100) / 50) * 50;
-        const sum = rates.reduce((x, y) => x + y, 0), left = R.typeAvail(t.id, a, n);
-        const ppl = +$('#nbA').value + +$('#nbC').value, seasons = [...new Set(rates.map((_, i) => (R.seasonOn(addDays(a, i)) || {}).name).filter(Boolean))];
-        const key = t.id + a + n;
-        if (key !== lastKey) {
-          lastKey = key;
-          const free = R.freeRooms(t.id, a, n);
-          $('#nbRoom').innerHTML = `<option value="">Assign automatically</option>` + free.map(x => `<option value="${x.no}" ${x.no === pre.room ? 'selected' : ''}>${x.no}</option>`).join('');
-          $('#nbRate').placeholder = 'Season price ' + R.money(sum / n);
-        }
-        const over = +$('#nbRate').value > 0 && +$('#nbRate').value * n < sum;
-        const total = +$('#nbRate').value > 0 ? +$('#nbRate').value * n : sum;
-        $('#nbQuote').innerHTML = `<div class="note ${left ? '' : 'warn'}"><div class="row"><b>${left ? `${left} free` : 'Sold out'}</b> <span class="muted">${R.fmt(a)} → ${R.fmt(addDays(a, n))}</span><span style="margin-left:auto" class="num"><b>${R.money(total)}</b> total</span></div>
-          <div class="small muted">${rates.map(R.money).join(' + ')}${seasons.length ? ' · ' + seasons.map(esc).join(', ') + ' pricing' : ''}${late ? ` · <b>${esc(late.name)} ${late.pct}% tonight</b>` : ''}${$('#nbCh').value.match(/Agoda|Booking/) ? ` · ${R.sourceFee($('#nbCh').value)}% commission` : ` · ${R.S.rules.deposit}% deposit to confirm: ${R.money(total * R.S.rules.deposit / 100)}`}</div>
-          ${ppl > t.cap ? `<div class="small warn-text">${ppl} guests, but this room sleeps ${t.cap}. Choose a bigger room type, or write why it's OK below.</div>` : ''}
-          ${over ? `<div class="small">Below the season price: ${R.can('rate') ? 'you can approve this.' : 'a supervisor will approve with their PIN.'}</div>` : ''}</div>`;
-        $('#nbOverW').hidden = ppl <= t.cap;
-        $('#nbGo').disabled = !left;
-        return { t, n, a, rates, over, ppl, late };
+    const srcs = R.S.sources.map(s => s.name);
+    const a0 = pre.date && pre.date >= bd() ? pre.date : bd();
+    const st = { type: pre.type || '', room: pre.room || '', guest: pre.guest ? R.findGuest(pre.guest) || null : null, ch: srcs.includes(pre.ch) ? pre.ch : 'Facebook Messenger', dep: '', rate: false };
+    const count = (id, label, sub, v, min, max) => `<div class="nb-count"><label for="${id}"><b>${label}</b><small>${sub}</small></label><div class="nb-step">
+      <button type="button" data-nbstep="-1" data-id="${id}" aria-label="One less ${label.toLowerCase()}">−</button><input id="${id}" type="number" inputmode="numeric" value="${v}" min="${min}" max="${max}">
+      <button type="button" data-nbstep="1" data-id="${id}" aria-label="One more ${label.toLowerCase()}">+</button></div></div>`;
+    const chips = (name, list, cur, label) => `<fieldset class="nb-set"><legend>${label}</legend><div class="nb-chips">${list.map(([v, l]) => `<label class="nb-chip"><input type="radio" name="${name}" value="${esc(v)}" ${v === cur ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}</div></fieldset>`;
+    R.modal('New booking', `<form class="nb" id="nbForm" novalidate><div class="nb-main">
+      <section class="nb-sec" aria-labelledby="nbH1"><h3 id="nbH1">Dates and guests</h3>
+        <div class="nb-dates" data-dp-range>
+          <input type="date" id="nbArr" data-dp-label="Arrival" data-dp-info="nbFree" min="${bd()}" value="${a0}">
+          <input type="date" id="nbOut" data-dp-label="Departure" min="${addDays(bd(), 1)}" value="${addDays(a0, 1)}"></div>
+        <div class="nb-ppl">${count('nbA', 'Adults', '13 and older', 2, 1, 20)}${count('nbC', 'Children', '12 and younger', 0, 0, 10)}</div></section>
+      <section class="nb-sec" aria-labelledby="nbH2"><h3 id="nbH2">Room</h3>
+        <div class="nb-types" id="nbTypes" role="radiogroup" aria-labelledby="nbH2"></div>
+        <div id="nbRooms"></div>
+        <div class="nb-rate"><button type="button" class="nb-link" id="nbRateBtn" aria-expanded="false" aria-controls="nbRateW">Change the price</button>
+          <label class="field" id="nbRateW" hidden>Price a night (₱)<input id="nbRate" type="number" inputmode="numeric" min="1"></label><div id="nbRateNote"></div></div>
+        <label class="field" id="nbOverW" hidden>More guests than the room sleeps: why is it OK?<input id="nbOver" placeholder="e.g. extra mattress ₱500, 1 baby in a crib"></label></section>
+      <section class="nb-sec" aria-labelledby="nbH3"><h3 id="nbH3">Guest</h3>
+        <div id="nbWho"></div>
+        <div id="nbFind"><label class="field">Name or mobile number<input id="nbGuest" role="combobox" aria-expanded="false" aria-controls="nbDup" aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="Start typing: returning guests appear below"></label>
+          <div id="nbDup"></div>
+          <div class="nb-new" id="nbNewWrap" hidden><p class="nb-sub">New guest</p><div class="form">
+            <label class="field">Mobile number<input id="nbPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="0917 123 4567"></label>
+            <label class="field">Email (optional)<input id="nbEmail" type="email" spellcheck="false" placeholder="name@gmail.com"></label></div></div></div></section>
+      <section class="nb-sec" aria-labelledby="nbH4"><h3 id="nbH4">How they booked</h3>
+        ${chips('nbCh', srcs.map(s => [s, s]), st.ch, 'Booked through')}
+        ${chips('nbDep', [['', 'Not yet'], ...NB_PAY.map(m => [m, m])], '', 'Deposit received')}
+        <label class="field" id="nbRefW" hidden>Payment reference<input id="nbRef" spellcheck="false" placeholder="GCash or bank reference number"></label>
+        <label class="field">Notes<textarea id="nbNotes" rows="2" placeholder="e.g. birthday cake at 7 pm, late arrival"></textarea></label></section>
+      </div><aside class="nb-side"><div id="nbQuote" aria-live="polite"></div></aside></form>
+      <div class="foot nb-foot"><p id="nbErr" role="alert"></p><button type="button" class="btn ghost" data-act="closeModal">Cancel</button><button type="submit" form="nbForm" class="btn" id="nbGo">Create booking</button></div>`, b => {
+      const $ = s => b.querySelector(s), $$ = s => [...b.querySelectorAll(s)];
+      const int = (id, lo, hi) => Math.min(hi, Math.max(lo, Math.round(+$(id).value) || lo));
+      const radio = n => { const x = b.querySelector(`input[name="${n}"]:checked`); return x ? x.value : ''; };
+      const lateFor = a => st.ch === 'Walk-in' && a === bd() && R.seasonOn(bd(), null, 'walkin', R.now());
+      const ratesFor = (t, a, n) => { const r = R.quote(t.id, a, n), late = lateFor(a); if (late) r[0] = Math.round(r[0] * (1 + late.pct / 100) / 50) * 50; return r; };
+      // everything the rest of the form needs, read from the boxes
+      const q = () => {
+        const a = $('#nbArr').value || bd();
+        if (!($('#nbOut').value > a)) $('#nbOut').value = addDays(a, 1);
+        const n = Math.min(30, Math.max(1, daysBetween(a, $('#nbOut').value))), adults = int('#nbA', 1, 20), children = int('#nbC', 0, 10);
+        const t = R.type(st.type) || R.S.roomTypes[0], rates = ratesFor(t, a, n), sum = rates.reduce((x, y) => x + y, 0);
+        const rate = +$('#nbRate').value > 0 ? +$('#nbRate').value : 0, total = rate ? rate * n : sum;
+        return { a, n, adults, children, ppl: adults + children, t, rates, sum, rate, total, over: rate > 0 && total < sum, left: R.typeAvail(t.id, a, n), late: lateFor(a) };
       };
-      b.querySelectorAll('input,select').forEach(i => i.addEventListener('input', quote));
-      quote();
-      $('#nbGo').onclick = () => {
-        const q = quote(), err = m => { $('#nbErr').textContent = m; };
-        const name = $('#nbGuest').value.trim();
-        let g = found();
-        if (!g && name.length < 3) return err('Enter the guest name.');
-        if (!g && $('#nbPhone').value.trim().length < 7) return err('Enter a mobile number for the new guest.');
-        if (q.ppl > q.t.cap && $('#nbOver').value.trim().length < 5) return err(`${q.ppl} guests is more than the ${q.t.name} sleeps (${q.t.cap}). Write why it's OK.`);
-        if ($('#nbDep').value && $('#nbDep').value !== 'Cash' && $('#nbRef').value.trim().length < 4) return err('Enter the deposit reference number.');
-        const vals = { name, phone: $('#nbPhone').value.trim(), email: $('#nbEmail').value.trim(), ch: $('#nbCh').value, adults: +$('#nbA').value, children: +$('#nbC').value,
-          room: $('#nbRoom').value, rate: +$('#nbRate').value, dep: $('#nbDep').value, ref: $('#nbRef').value.trim(), notes: [$('#nbNotes').value.trim(), q.ppl > q.t.cap ? `Over capacity (${q.ppl} in a room for ${q.t.cap}): ${$('#nbOver').value.trim()}` : ''].filter(Boolean).join(' · ') };
+      // ----- room types: free count and price for these dates -----
+      const paintTypes = () => {
+        const x = q();
+        if (!R.type(st.type)) st.type = (R.S.roomTypes.find(t => R.typeAvail(t.id, x.a, x.n) > 0 && t.cap >= x.ppl) || R.S.roomTypes[0]).id;
+        $('#nbTypes').innerHTML = R.S.roomTypes.map(t => {
+          const sum = ratesFor(t, x.a, x.n).reduce((p, c) => p + c, 0), left = R.typeAvail(t.id, x.a, x.n), small = x.ppl > t.cap;
+          return `<label class="nb-type ${st.type === t.id ? 'on' : ''} ${left ? '' : 'off'}"><input type="radio" name="nbType" value="${t.id}" ${st.type === t.id ? 'checked' : ''}>
+            <span class="nb-type-name"><b>${esc(t.name)}</b><small>Sleeps ${t.cap}${small ? `, <span class="warn-text">too small for ${x.ppl}</span>` : ''}</small></span>
+            <span class="nb-type-left ${left && left <= 2 ? 'few' : ''}">${left ? `${left} free` : 'Sold out'}</span>
+            <span class="nb-type-price"><b>${R.money(sum)}</b><small>${x.n > 1 ? `${R.money(sum / x.n)} a night` : 'a night'}</small></span></label>`;
+        }).join('');
+        paintRooms();
+      };
+      const paintRooms = () => {
+        const x = q(), free = R.freeRooms(x.t.id, x.a, x.n).map(r => r.no);
+        if (st.room && !free.includes(st.room)) st.room = '';
+        $('#nbRooms').innerHTML = free.length ? chips('nbRoom', [['', 'Any free room'], ...free.map(no => [no, no])], st.room, `Room number <span class="muted">(${esc(x.t.name)})</span>`)
+          : `<p class="note warn nb-sold">${R.icon('alert')}<span>No ${esc(x.t.name)} is free for these dates. Pick another room type or other dates.</span></p>`;
+        $('#nbRate').placeholder = 'Season price ' + R.money(x.sum / x.n);
+        paint();
+      };
+      // ----- guest: search, pick, or a new profile -----
+      const choose = g => { st.guest = g; clearErr('nbGuest'); paintGuest(); paint(); };
+      const paintGuest = () => {
+        const g = st.guest;
+        $('#nbFind').hidden = !!g;
+        $('#nbWho').innerHTML = g ? `<div class="nb-who"><span class="nb-av" aria-hidden="true">${esc(R.initials(g.name))}</span><div class="grow"><b>${esc(g.name)}</b>
+          <small>${esc(g.phone || 'No mobile on file')}${g.town ? ', ' + esc(g.town) : ''}. ${g.stays > 1 ? `Returning guest, ${nbPlural(g.stays, 'stay')}` : 'Has stayed once'}${g.tag ? ` <span class="chip amber">${esc(g.tag)}</span>` : ''}</small></div>
+          <button type="button" class="btn ghost sm" id="nbChange">Change guest</button></div>` : '';
+        if (g) return;
+        const typed = $('#nbGuest').value.trim(), nm = typed.toLowerCase(), digits = (typed + ' ' + $('#nbPhone').value).replace(/\D/g, '');
+        const hits = R.S.guests.filter(x => (nm.length >= 2 && /[a-z]/.test(nm) && (x.name.toLowerCase().startsWith(nm) || x.name.toLowerCase().includes(' ' + nm)))
+          || (digits.length >= 4 && x.phone.replace(/\D/g, '').includes(digits.slice(-7))))
+          .sort((p, c) => (c.name.toLowerCase() === nm) - (p.name.toLowerCase() === nm) || c.stays - p.stays).slice(0, 5);
+        $('#nbDup').innerHTML = hits.length ? `<div class="nb-hits" id="nbHits" role="listbox" aria-label="Returning guests"><p><b>Already a guest?</b> Pick them so their history stays in one place.</p>
+          ${hits.map(x => `<button type="button" class="nb-hit" role="option" data-g="${x.id}"><span class="nb-av" aria-hidden="true">${esc(R.initials(x.name))}</span><span><b>${esc(x.name)}</b><small>${esc(x.phone)}${x.town ? ', ' + esc(x.town) : ''}. ${nbPlural(x.stays, 'stay')}</small></span></button>`).join('')}</div>` : '';
+        $('#nbGuest').setAttribute('aria-expanded', String(!!hits.length));
+        $('#nbNewWrap').hidden = typed.length < 2 || !/[a-z]/i.test(typed);
+      };
+      // ----- the summary -----
+      const paint = () => {
+        const x = q(), ota = /Agoda|Booking/.test(st.ch), dep = radio('nbDep'), room = radio('nbRoom');
+        const depAmt = Math.round(x.total * (dep === 'Prepaid on booking site' ? 1 : R.S.rules.deposit / 100));
+        const seasons = [...new Set(x.rates.map((_, i) => (R.seasonOn(addDays(x.a, i)) || {}).name).filter(Boolean))];
+        $('#nbQuote').innerHTML = `<div class="nb-sum"><h3>Booking summary</h3>
+          <p class="nb-sum-top"><b>${esc(x.t.name)}</b><span class="chip ${x.left ? x.left <= 2 ? 'amber' : 'green' : 'red'}">${x.left ? `${x.left} free` : 'Sold out'}</span></p>
+          <p class="muted">${room ? `Room ${esc(room)}` : 'Room assigned automatically'}</p>
+          <p>${R.fmt(x.a)} to ${R.fmt(addDays(x.a, x.n))}<br><span class="muted">${nbPlural(x.n, 'night')}, ${nbPlural(x.adults, 'adult')}${x.children ? `, ${x.children} ${x.children === 1 ? 'child' : 'children'}` : ''}</span></p>
+          <div class="nb-lines">${x.rate ? `<div class="nb-line"><span>${nbPlural(x.n, 'night')} × ${R.money(x.rate)}</span><span>${R.money(x.total)}</span></div>`
+            : x.rates.map((r, i) => `<div class="nb-line"><span>${R.fmtShort(addDays(x.a, i))}${i === 0 && x.late ? ` <b>${esc(x.late.name)} ${x.late.pct}%</b>` : ''}</span><span>${R.money(r)}</span></div>`).join('')}</div>
+          ${seasons.length && !x.rate ? `<p class="small muted">${seasons.map(esc).join(', ')} pricing</p>` : ''}
+          <div class="nb-line total"><span>Total</span><b>${R.money(x.total)}</b></div>
+          ${ota ? `<div class="nb-line"><span>${esc(st.ch)} commission</span><span>${R.sourceFee(st.ch)}%</span></div>` : ''}
+          <div class="nb-line nb-dep ${dep ? 'paid' : ''}"><span>${dep ? `${dep === 'Prepaid on booking site' ? 'Prepaid' : 'Deposit'} by ${esc(dep === 'Prepaid on booking site' ? 'booking site' : dep)}` : `${R.S.rules.deposit}% deposit to confirm`}</span><b>${R.money(depAmt)}</b></div>
+          <p class="nb-sum-guest">${st.guest ? `For <b>${esc(st.guest.name)}</b>` : $('#nbGuest').value.trim().length > 2 ? `For <b>${esc($('#nbGuest').value.trim())}</b> (new guest)` : '<span class="muted">No guest picked yet</span>'}</p></div>`;
+        $('#nbOverW').hidden = x.ppl <= x.t.cap;
+        $('#nbRateNote').innerHTML = x.over ? `<p class="small">Below the season price of ${R.money(x.sum / x.n)}: ${R.can('rate') ? 'you can approve this.' : 'a supervisor approves with their PIN.'}</p>` : '';
+        $('#nbRefW').hidden = !dep || dep === 'Cash';
+        $('#nbGo').disabled = !x.left;
+        $('#nbGo').textContent = x.left ? `Create booking, ${R.money(x.total)}` : 'Sold out for these dates';
+        return x;
+      };
+      // ----- errors next to the field -----
+      const clearErr = id => { const el = $('#' + id), box = el && el.closest('.field'); if (!box) return; box.classList.remove('has-err'); el.removeAttribute('aria-invalid'); const m = box.querySelector('.err'); if (m) m.remove(); };
+      const setErr = (id, msg) => { const el = $('#' + id), box = el.closest('.field'); clearErr(id); box.classList.add('has-err'); el.setAttribute('aria-invalid', 'true'); el.setAttribute('aria-describedby', 'nbE-' + id); box.insertAdjacentHTML('beforeend', `<p class="err" id="nbE-${id}">${esc(msg)}</p>`); };
+
+      // ----- events (on the form: the dialog body is reused by every dialog, the form is new each time) -----
+      const form = $('#nbForm');
+      form.addEventListener('input', e => {
+        const id = e.target.id, name = e.target.name;
+        if (id) clearErr(id);
+        if (name === 'nbType') { st.type = e.target.value; $$('.nb-type').forEach(l => l.classList.toggle('on', l.querySelector('input').checked)); paintRooms(); return; }
+        if (name === 'nbRoom') { st.room = e.target.value; paint(); return; }
+        if (name === 'nbCh') { st.ch = e.target.value; paintTypes(); return; }
+        if (id === 'nbGuest') { const m = e.target.value.match(/ — (G\d+)$/); if (m && R.guest(m[1])) return choose(R.guest(m[1])); paintGuest(); paint(); return; }
+        if (id === 'nbPhone') { paintGuest(); return; }
+        if (['nbArr', 'nbOut', 'nbA', 'nbC'].includes(id)) { $$('[data-nbstep]').forEach(s => { const i = $('#' + s.dataset.id); s.disabled = +s.dataset.nbstep < 0 ? +i.value <= +i.min : +i.value >= +i.max; }); paintTypes(); return; }
+        paint();
+      });
+      form.addEventListener('click', e => {
+        const s = e.target.closest('[data-nbstep]');
+        if (s) { const i = $('#' + s.dataset.id); i.value = Math.min(+i.max, Math.max(+i.min, (+i.value || 0) + +s.dataset.nbstep)); i.dispatchEvent(new Event('input', { bubbles: true })); return; }
+        const h = e.target.closest('.nb-hit');
+        if (h) { choose(R.guest(h.dataset.g)); $('#nbChange').focus(); return; }
+        if (e.target.closest('#nbChange')) { const name = st.guest.name; st.guest = null; $('#nbGuest').value = name; paintGuest(); paint(); $('#nbGuest').focus(); $('#nbGuest').select(); return; }
+        if (e.target.closest('#nbRateBtn')) { const w = $('#nbRateW'), open = w.hidden; w.hidden = !open; $('#nbRateBtn').setAttribute('aria-expanded', String(open)); $('#nbRateBtn').textContent = open ? 'Use the season price' : 'Change the price'; if (open) $('#nbRate').focus(); else { $('#nbRate').value = ''; paint(); } }
+      });
+      // arrows move between the guest box and the guests found; Enter picks the first one
+      form.addEventListener('keydown', e => {
+        const hits = $$('.nb-hit'), i = hits.indexOf(document.activeElement);
+        if (e.target.id === 'nbGuest' && e.key === 'Enter') { e.preventDefault(); if (hits[0]) hits[0].click(); }
+        else if (e.target.id === 'nbGuest' && e.key === 'ArrowDown' && hits[0]) { e.preventDefault(); hits[0].focus(); }
+        else if (i >= 0 && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); (e.key === 'ArrowDown' ? hits[i + 1] : hits[i - 1] || $('#nbGuest')) && (e.key === 'ArrowDown' ? hits[i + 1] : hits[i - 1] || $('#nbGuest')).focus(); }
+      });
+      form.addEventListener('submit', e => { e.preventDefault(); go(); });
+
+      if (st.guest) $('#nbGuest').value = st.guest.name + ' — ' + st.guest.id;
+      paintTypes(); paintGuest();
+
+      const go = () => {
+        const x = paint(), errs = [], name = $('#nbGuest').value.trim(), dep = radio('nbDep');
+        const add = (id, msg) => { setErr(id, msg); errs.push([id, msg]); };
+        b.querySelectorAll('.field.has-err').forEach(f => { const i = f.querySelector('input,textarea'); if (i) clearErr(i.id); });
+        if (!x.left) return;
+        if (!st.guest && name.length < 3) add('nbGuest', 'Enter the guest name, or pick a returning guest.');
+        if (!st.guest && name.length >= 3 && $('#nbPhone').value.replace(/\D/g, '').length < 7) add('nbPhone', 'Enter a mobile number for the new guest.');
+        if (x.ppl > x.t.cap && $('#nbOver').value.trim().length < 5) add('nbOver', `${x.ppl} guests is more than the ${x.t.name} sleeps (${x.t.cap}). Write why it's OK.`);
+        if (dep && dep !== 'Cash' && $('#nbRef').value.trim().length < 4) add('nbRef', 'Enter the payment reference number.');
+        $('#nbErr').textContent = errs.length ? (errs.length === 1 ? errs[0][1] : `Fix ${errs.length} things above. ${errs[0][1]}`) : '';
+        if (errs.length) { $('#' + errs[0][0]).focus(); return; }
+        let g = st.guest;
+        const vals = { name, phone: $('#nbPhone').value.trim(), email: $('#nbEmail').value.trim(), ch: st.ch, adults: x.adults, children: x.children, room: radio('nbRoom'), rate: x.rate, dep, ref: $('#nbRef').value.trim(),
+          notes: [$('#nbNotes').value.trim(), x.ppl > x.t.cap ? `Over capacity (${x.ppl} in a room for ${x.t.cap}): ${$('#nbOver').value.trim()}` : ''].filter(Boolean).join(' · ') };
         const create = by => {
           if (!g) { g = { id: R.nextId('G'), name: vals.name, email: vals.email, phone: vals.phone, town: '', tag: '', stays: 0, nationality: 'Filipino', idType: '', idNo: '' }; R.S.guests.unshift(g); }
-          const rates = vals.rate > 0 ? q.rates.map(() => vals.rate) : q.rates;
-          const room = vals.room || (R.freeRooms(q.t.id, q.a, q.n)[0] || {}).no || null;
-          const r = { id: 'CR-' + (++R.S.seq), guestId: g.id, type: q.t.id, room, arrive: q.a, nights: q.n, rates, adults: vals.adults, children: vals.children, channel: vals.ch, status: 'booked', notes: vals.notes, folio: [], payments: [], reg: null, eta: '14:00', created: bd() };
+          const rates = vals.rate > 0 ? x.rates.map(() => vals.rate) : x.rates;
+          const room = vals.room || (R.freeRooms(x.t.id, x.a, x.n)[0] || {}).no || null;
+          const r = { id: 'CR-' + (++R.S.seq), guestId: g.id, type: x.t.id, room, arrive: x.a, nights: x.n, rates, adults: vals.adults, children: vals.children, channel: vals.ch, status: 'booked', notes: vals.notes, folio: [], payments: [], reg: null, eta: '14:00', created: bd() };
           R.S.reservations.push(r);
-          R.log('Booking created', `${q.t.name}, ${q.n}n from ${R.fmtShort(q.a)} · ${R.money(R.stayValue(r))}${vals.rate > 0 ? ' · rate set by hand' : ''}`, r.id, by);
+          R.log('Booking created', `${x.t.name}, ${x.n}n from ${R.fmtShort(x.a)} · ${R.money(R.stayValue(r))}${vals.rate > 0 ? ' · rate set by hand' : ''}`, r.id, by);
           if (vals.dep) R.addPayment(r, Math.round(R.stayValue(r) * (vals.dep === 'Prepaid on booking site' ? 1 : R.S.rules.deposit / 100)), vals.dep, vals.ref, R.S.user, 'Deposit');
           R.closeModal(); R.rerender(); R.go('booking', r.id);
           R.toast(`Booking ${r.id} created${room ? ', room ' + room : ''}. Confirmation sent by text.`);
         };
-        if (q.over && !R.can('rate')) {
-          return R.authorize({ perm: 'rate', title: 'Approve a lower rate', ok: 'Approve and create', body: `<p>${R.money(vals.rate)} per night instead of the season price of ${R.money(q.rates.reduce((x, y) => x + y, 0) / q.n)}.</p>` }, a => { R.log('Rate approved', a.reason, '', a.by); create(R.S.user); });
+        if (x.over && !R.can('rate')) {
+          return R.authorize({ perm: 'rate', title: 'Approve a lower rate', ok: 'Approve and create', body: `<p>${R.money(vals.rate)} per night instead of the season price of ${R.money(x.sum / x.n)}.</p>` }, a => { R.log('Rate approved', a.reason, '', a.by); create(R.S.user); });
         }
         create();
       };
-    });
+    }, { wide: true });
   };
 
   // ---------- Front desk (home) ----------

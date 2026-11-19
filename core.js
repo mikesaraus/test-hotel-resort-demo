@@ -271,7 +271,9 @@
     onClose = null;
     document.getElementById('modalTitle').textContent = title;
     document.querySelector('#modalBack .modal').className = 'modal' + (opts && opts.wide ? ' wide' : '');
-    const body = document.getElementById('modalBody');
+    // a fresh body each time, so listeners added by the last dialog don't run again in this one
+    const old = document.getElementById('modalBody'), body = old.cloneNode(false);
+    old.replaceWith(body);
     body.innerHTML = html;
     back.hidden = false;
     if (mount) mount(body);
