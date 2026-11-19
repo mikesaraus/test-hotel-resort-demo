@@ -666,8 +666,12 @@
   };
 
   // ---------- Reservations: list, availability, groups ----------
-  let rsStatus = 'upcoming', rsChannel = '', rsQ = '', rsView = 'list', avStart = null;
+  let rsStatus = 'upcoming', rsChannel = '', rsQ = '', rsView = 'list', avStart = null, rsSort = '', rsFlag = '';
   R.act.rsFilter = (d, el) => { if (el.id === 'rsStatus') rsStatus = el.value; else rsChannel = el.value; R.render(); };
+  R.act.rsTab = d => { rsStatus = d.s; rsSort = ''; rsFlag = ''; R.render(); };
+  R.act.rsSortBy = (d, el) => { rsSort = el.value; R.render(); };
+  R.act.rsFlagBy = d => { rsFlag = rsFlag === d.f ? '' : d.f; R.render(); };
+  R.act.rsClear = () => { rsQ = ''; rsChannel = ''; rsFlag = ''; R.render(); const s = document.getElementById('rsSearch'); if (s) s.focus(); };
   R.act.rsView = d => { rsView = d.v; R.render(); };
   R.act.avShift = d => { avStart = d.n === '0' ? bd() : addDays(avStart, +d.n); if (avStart < bd()) avStart = bd(); R.render(); };
   R.act.avNew = d => R.newBooking({ type: d.t, date: d.d });
@@ -702,21 +706,50 @@
     render() {
       const toggle = `<div class="row" style="margin-bottom:12px"><div class="seg" role="group" aria-label="View">${[['list', 'Bookings'], ['avail', 'Availability & groups']].map(([v, l]) => `<button class="${rsView === v ? 'on' : ''}" aria-pressed="${rsView === v}" data-act="rsView" data-v="${v}"><b>${l}</b></button>`).join('')}</div></div>`;
       if (rsView === 'avail') return toggle + availability();
-      const q = rsQ.toLowerCase();
-      let L = R.S.reservations.slice();
-      if (rsStatus === 'upcoming') L = L.filter(r => r.status === 'booked');
-      else if (rsStatus) L = L.filter(r => r.status === rsStatus);
-      if (rsChannel) L = L.filter(r => r.channel === rsChannel);
-      if (q) L = L.filter(r => R.guest(r.guestId).name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q));
-      L.sort((a, b) => rsStatus === 'upcoming' || rsStatus === 'booked' ? a.arrive.localeCompare(b.arrive) : b.arrive.localeCompare(a.arrive));
-      const opts = [['upcoming', 'Upcoming'], ['inhouse', 'In house'], ['checkedout', 'Checked out'], ['cancelled', 'Cancelled'], ['noshow', 'No-show'], ['', 'All']];
-      return toggle + `<div class="panel"><div class="ph">
-        <select id="rsStatus" data-change="rsFilter" class="search" aria-label="Status">${opts.map(([v, l]) => `<option value="${v}" ${rsStatus === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        <select id="rsChannel" data-change="rsFilter" class="search" aria-label="Booked through"><option value="">All sources</option>${R.S.sources.map(c => `<option ${c.name === rsChannel ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
-        <input class="search" id="rsSearch" placeholder="Guest or booking no." value="${esc(rsQ)}" aria-label="Search">
-        <div class="sp"><span class="muted small">${L.length} bookings</span>${R.can('book') ? `<button class="btn ghost" data-act="newGroup">Group</button><button class="btn" data-act="newBooking">${R.icon('plus')}New booking</button>` : ''}</div></div>
-        <div class="tbl"><table><thead><tr><th>Guest</th><th>Room</th><th>Stay</th><th>Status</th><th class="right">Value · balance</th></tr></thead>
-        <tbody>${L.slice(0, 150).map(r => { const b = r.status === 'booked' || r.status === 'inhouse' ? R.expectedBalance(r) : R.balance(r); return R.resRow(r, `<span class="num">${R.money(R.stayValue(r))}</span><div class="small ${b > 0 ? '' : 'muted'}">${b > 0 ? R.money(b) + ' due' : 'Paid'}</div>`); }).join('') || '<tr><td colspan="5" class="empty">No bookings match. Clear the filters or make a new booking.</td></tr>'}</tbody></table></div></div>`;
+      const q = rsQ.trim().toLowerCase(), qd = q.replace(/\D/g, ''), can = R.can('book');
+      const due = r => r.status === 'booked' || r.status === 'inhouse' ? R.expectedBalance(r) : R.balance(r);
+      // search and source first, so the tabs can show how many each would give
+      const base = R.S.reservations.filter(r => {
+        if (rsChannel && r.channel !== rsChannel) return false;
+        if (!q) return true;
+        const g = R.guest(r.guestId);
+        return g.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || (r.room || '').toLowerCase() === q || (qd.length >= 4 && (g.phone || '').replace(/\D/g, '').includes(qd));
+      });
+      const TABS = [['upcoming', 'Upcoming', r => r.status === 'booked'], ['inhouse', 'In house', r => r.status === 'inhouse'], ['checkedout', 'Checked out', r => r.status === 'checkedout'],
+        ['cancelled', 'Cancelled', r => r.status === 'cancelled'], ['noshow', 'No-show', r => r.status === 'noshow'], ['', 'All', () => true]];
+      const tab = TABS.find(t => t[0] === rsStatus) || TABS[0];
+      let L = base.filter(tab[2]);
+      // things that need doing before arrival
+      const FLAGS = [['nodep', 'No deposit yet', r => r.status === 'booked' && !R.paid(r)], ['noroom', 'No room assigned', r => r.status === 'booked' && !r.room], ['today', 'Arriving today', r => r.status === 'booked' && r.arrive <= bd()]];
+      const flags = rsStatus === 'upcoming' ? FLAGS.map(f => [...f, L.filter(f[2]).length]).filter(f => f[3]) : [];
+      const flag = flags.find(f => f[0] === rsFlag);
+      if (flag) L = L.filter(flag[2]);
+      const SORTS = [['arrive-asc', 'Arrival, soonest first'], ['arrive-desc', 'Arrival, latest first'], ['created', 'Recently booked'], ['name', 'Guest name'], ['due', 'Most to collect']];
+      const sort = rsSort || (rsStatus === 'upcoming' || rsStatus === 'inhouse' ? 'arrive-asc' : 'arrive-desc');
+      const by = { 'arrive-asc': (a, b) => a.arrive.localeCompare(b.arrive) || a.id.localeCompare(b.id), 'arrive-desc': (a, b) => b.arrive.localeCompare(a.arrive) || b.id.localeCompare(a.id),
+        created: (a, b) => (b.created || '').localeCompare(a.created || '') || b.id.localeCompare(a.id), name: (a, b) => R.guest(a.guestId).name.localeCompare(R.guest(b.guestId).name), due: (a, b) => due(b) - due(a) };
+      L.sort(by[sort]);
+      const shown = L.slice(0, 150), byDay = sort.startsWith('arrive');
+      const dayName = d => d === bd() ? 'Today' : d === addDays(bd(), 1) ? 'Tomorrow' : d === addDays(bd(), -1) ? 'Yesterday' : R.fmt(d);
+      let lastDay = '';
+      const rows = shown.map(r => {
+        const b = due(r), head = byDay && r.arrive !== lastDay ? (lastDay = r.arrive, `<tr class="rs-day"><th colspan="5">${dayName(r.arrive)} <span class="g-n">${L.filter(x => x.arrive === r.arrive).length}</span></th></tr>`) : '';
+        const money = `<span class="num">${R.money(R.stayValue(r))}</span><div class="small ${b > 0 ? '' : 'muted'}">${b > 0 ? R.money(b) + ' due' : 'Paid'}</div>${r.status === 'booked' && !R.paid(r) ? '<span class="chip amber">No deposit</span>' : ''}`;
+        return head + R.resRow(r, money);
+      }).join('');
+      const filtered = q || rsChannel || rsFlag;
+      return toggle + `<div class="panel"><div class="g-tools">
+          <div class="g-search">${R.icon('search')}<input type="search" id="rsSearch" placeholder="Guest, mobile, booking no. or room" value="${esc(rsQ)}" aria-label="Search bookings" autocomplete="off" spellcheck="false">${rsQ ? '<button type="button" class="g-clear" data-act="rsClear" aria-label="Clear the search">×</button>' : ''}</div>
+          <label class="g-sort">Source<select id="rsChannel" data-change="rsFilter" aria-label="Booked through"><option value="">All sources</option>${R.S.sources.map(c => `<option ${c.name === rsChannel ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+          <label class="g-sort">Sort<select data-change="rsSortBy" aria-label="Sort bookings">${SORTS.map(([k, l]) => `<option value="${k}" ${sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          ${can ? `<div class="row rs-new"><button class="btn ghost" data-act="newGroup">${R.icon('users')}Group</button><button class="btn" data-act="newBooking">${R.icon('plus')}New booking</button></div>` : ''}</div>
+        <div class="seg g-filters" role="group" aria-label="Status">${TABS.map(([k, l, f]) => `<button class="${rsStatus === k ? 'on' : ''}" aria-pressed="${rsStatus === k}" data-act="rsTab" data-s="${k}"><b>${l}</b> <span class="g-n">${base.filter(f).length}</span></button>`).join('')}</div>
+        ${flags.length ? `<div class="rs-flags" role="group" aria-label="Needs attention">${flags.map(([k, l, , n]) => `<button class="fx-q" aria-pressed="${rsFlag === k}" data-act="rsFlagBy" data-f="${k}">${l} <b>${n}</b></button>`).join('')}</div>` : ''}
+        ${L.length ? `<div class="tbl"><table class="rs-tbl"><thead><tr><th>Guest</th><th>Room</th><th>Stay</th><th>Status</th><th class="right">Value · balance</th></tr></thead><tbody>${rows}</tbody></table></div>
+          ${L.length > shown.length ? `<p class="small muted g-more">Showing ${shown.length} of ${L.length} bookings. Search, or pick a source, to find the others.</p>` : ''}`
+        : `<div class="g-empty"><b>${q ? `No bookings match “${esc(rsQ.trim())}”` : `No ${tab[1].toLowerCase()} bookings${rsChannel ? ' from ' + esc(rsChannel) : ''}${flag ? ' with “' + flag[1].toLowerCase() + '”' : ''}`}</b>
+            <p class="muted">${q ? 'Search by guest name, mobile number, booking number like CR-2105, or room number.' : 'Try another tab or source.'}</p>
+            <div class="row">${filtered ? '<button class="btn ghost" data-act="rsClear">Clear search and filters</button>' : ''}${rsStatus !== '' ? '<button class="btn ghost" data-act="rsTab" data-s="">Show all bookings</button>' : ''}</div></div>`}</div>`;
     },
     mount(el) {
       const s = el.querySelector('#rsSearch');

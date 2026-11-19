@@ -959,3 +959,31 @@ h2 .g-n{vertical-align:2px;margin-left:4px}
 .g-copy{border:0;background:none;color:var(--lagoon);font:600 12px var(--body);cursor:pointer;padding:4px 6px;min-height:28px;border-radius:6px;text-decoration:underline;text-underline-offset:2px}
 .g-copy:hover{background:var(--lagoon-l)}
 .eg-sub{font-size:12px;font-weight:500;margin-left:6px}
+
+/* ---------- Reservations: bookings list ---------- */
+.rs-new{margin-left:auto;gap:8px}
+.rs-flags{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-2px 0 12px}
+.rs-flags::before{content:"Needs attention";font-size:12px;font-weight:700;color:var(--ink-3);margin-right:4px}
+.rs-flags .fx-q b{margin-left:4px;font-variant-numeric:tabular-nums}
+.rs-tbl .rs-day th{background:var(--bg);color:var(--ink-2);font-size:13px;font-weight:700;padding:7px 10px;text-align:left;border-bottom:1px solid var(--line)}
+.rs-tbl .rs-day th .g-n{background:var(--surface);margin-left:6px}
+.rs-tbl td.right .chip{margin-top:4px}
+
+@media screen and (max-width:600px){
+  .rs-new{width:100%;margin-left:0}
+  .rs-new .btn{flex:1;justify-content:center}
+  .rs-flags{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .rs-flags .fx-q{flex:none}
+  .rs-tbl thead{display:none}
+  .rs-tbl,.rs-tbl tbody{display:block}
+  .tbl .rs-tbl{min-width:0}
+  .rs-tbl tr.click{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:12px 4px;border-bottom:1px solid var(--line)}
+  .rs-tbl tr.click td{display:block;border:0;padding:0}
+  .rs-tbl tr.click td:nth-child(1){grid-column:1 / -1}
+  .rs-tbl tr.click td:nth-child(2){grid-column:1}
+  .rs-tbl tr.click td:nth-child(3){grid-column:1}
+  .rs-tbl tr.click td:nth-child(4){grid-column:2;grid-row:2;justify-self:end}
+  .rs-tbl tr.click td:nth-child(5){grid-column:2;grid-row:3}
+  .rs-tbl tr.rs-day{display:block}
+  .rs-tbl tr.rs-day th{display:block}
+}
