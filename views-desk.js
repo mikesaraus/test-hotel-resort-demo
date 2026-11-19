@@ -451,8 +451,10 @@
       };
       // ----- the summary -----
       const paint = () => {
-        const x = q(), ota = /Agoda|Booking/.test(st.ch), dep = radio('nbDep'), room = radio('nbRoom');
-        const need = Math.round(x.total * R.S.rules.deposit / 100), depAmt = dep ? pay.update(dep, need, x.total, 'at check-in') : need;
+        const x = q(), ota = /Agoda|Booking/.test(st.ch), pre = $('[name=nbDep][value="Prepaid on booking site"]');
+        pre.closest('.nb-chip').hidden = !ota; if (!ota && pre.checked) $('[name=nbDep][value=""]').checked = true; // only a booking site can have taken the money
+        const dep = radio('nbDep'), room = radio('nbRoom');
+        const need = Math.round(x.total * R.S.rules.deposit / 100), paid = pay.update(dep, need, x.total, 'at check-in'), depAmt = dep ? paid : need; // update('') hides the amount block again
         const seasons = [...new Set(x.rates.map((_, i) => (R.seasonOn(addDays(x.a, i)) || {}).name).filter(Boolean))];
         $('#nbQuote').innerHTML = `<div class="nb-sum"><h3>Booking summary</h3>
           <p class="nb-sum-top"><b>${esc(x.t.name)}</b><span class="chip ${x.left ? x.left <= 2 ? 'amber' : 'green' : 'red'}">${x.left ? `${x.left} free` : 'Sold out'}</span></p>

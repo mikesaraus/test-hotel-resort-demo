@@ -459,7 +459,7 @@
       };
       const paint = () => {
         const x = q(), stay = st.who === 'stay' && R.res($('#evR').value);
-        const paid = st.dep ? pay.update(st.dep, x.deposit, x.price, 'on the day') : 0;
+        const paid = pay.update(st.dep, x.deposit, x.price, 'on the day'); // with no method it hides the amount block and returns 0
         $('#evQ').innerHTML = `<div class="nb-sum"><h3>Reservation summary</h3>
           <p class="nb-sum-top"><b>${esc(x.c.name)}</b><span class="chip ${x.taken ? 'red' : 'green'}">${x.taken ? 'Reserved' : 'Free'}</span></p>
           <p class="muted">Holds ${x.c.cap}</p>

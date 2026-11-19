@@ -839,3 +839,13 @@ fieldset.days legend{margin-bottom:6px;padding:0}
 .fx-hint{font-size:13px;color:var(--ink-2);margin:6px 0 0}
 .fx-hint:empty{display:none}
 .fx-hint.bad{color:var(--hibiscus);font-weight:600}
+.fx-hint.warn{color:#8A5F1C}
+.fx-pay-row{align-items:start}
+.fx-money{display:flex;align-items:center;border:1px solid var(--line-strong);border-radius:var(--r-s);background:#fff;min-height:38px}
+.fx-money:focus-within{border-color:var(--lagoon)}
+.fx-money span{padding:0 0 0 10px;color:var(--ink-3);font-weight:600}
+.fx-money input{flex:1;min-width:0;border:0!important;min-height:36px;padding-left:6px;background:transparent;font-variant-numeric:tabular-nums;-moz-appearance:textfield;appearance:textfield}
+.fx-money input:focus{outline:none}
+.fx-money:has(input:focus-visible){outline:3px solid var(--gold);outline-offset:2px}
+.fx-money input::-webkit-inner-spin-button,.fx-money input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.nb .field.has-err .fx-money{border-color:var(--hibiscus)}
