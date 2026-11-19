@@ -1,6 +1,6 @@
 /* Guest booking page. Phone first: big tap targets, one column, the total and next button docked at the bottom. */
 /* height:auto beats the app's html,body{height:100%}: a fixed-height column squashed the welcome band under the tabs on short windows */
-.book-page{background:var(--bg);height:auto;min-height:100dvh;display:flex;flex-direction:column}
+.book-page{touch-action:manipulation;background:var(--bg);height:auto;min-height:100dvh;display:flex;flex-direction:column}
 .bk-top,.bk-hero,.bk-foot{flex:none}
 .bk-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 20px;background:#4B1519;color:#F1E6D8}
 .bk-brand{display:flex;flex-direction:column;align-items:flex-start;text-decoration:none;color:#FBF6EE}
@@ -212,3 +212,27 @@ body.at-start .bk-tabs button{box-shadow:var(--raise)}
   .bk-done-card dl{grid-template-columns:1fr}
   .bk-done-card dd{margin-bottom:6px}
 }
+
+/* first step: what's free, before going on */
+.bk-preview{margin:10px 2px 0;font-size:14px;color:var(--ink-2)}
+.bk-preview b{color:var(--ink);font-variant-numeric:tabular-nums}
+.bk-preview.none{color:var(--hibiscus);font-weight:600}
+
+/* details step */
+.bk-chips{display:flex;flex-wrap:wrap;gap:6px;margin:-6px 0 16px}
+.bk-chip{border:1px solid #D6C8B3;background:#fff;color:var(--ink-2);border-radius:999px;padding:0 12px;min-height:36px;font:inherit;font-size:13px;font-weight:600;cursor:pointer}
+.bk-chip:hover{border-color:var(--lagoon);color:var(--lagoon)}
+.bk-chip[aria-pressed="true"]{background:var(--lagoon-l);border-color:transparent;color:var(--lagoon)}
+.bk-early{margin:-8px 0 14px}
+.bk-early:empty{display:none}
+.bk-suggest{font-size:13px;margin:2px 0 0;color:var(--ink-2)}
+.bk-suggest button{background:none;border:0;padding:0 2px;min-height:36px;font:inherit;font-weight:700;color:var(--lagoon);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.bk-privacy{font-size:13px;margin:0 0 14px 32px;color:var(--ink-2)}
+.bk-privacy summary{cursor:pointer;color:var(--lagoon);font-weight:600;min-height:36px;display:flex;align-items:center}
+.bk-privacy p{margin:4px 0 0;max-width:62ch}
+
+/* long names and emails wrap instead of pushing the layout wide */
+.bk-sum,.bk-done-card dd,.bk-trip p,.bk-done .lead{overflow-wrap:anywhere}
+
+/* phones: the docked bar never hides the box you're typing in */
+html:has(body.has-dock){scroll-padding-bottom:120px}

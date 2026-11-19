@@ -37,6 +37,16 @@
   const phoneNice = p => { const d = p.replace(/\D/g, '').replace(/^63/, '0'); return d.length === 11 ? `${d.slice(0, 4)} ${d.slice(4, 7)} ${d.slice(7)}` : p; };
   const longDate = d => new Date(d + 'T12:00:00').toLocaleDateString('en-PH', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   const sel = () => B.tab === 'stay' ? roomOptions().find(o => o.t.id === B.type) : cottageKinds().find(k => k.kind === B.kind);
+  const time12 = t => { const [h, m] = t.split(':').map(Number); return `${(h + 11) % 12 + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : h === 12 && !m ? 'noon' : 'pm'}`; };
+  const hourOf = txt => { const m = /(\d+)(?::(\d+))?\s*(am|pm|noon)?/i.exec(txt || '') || []; let h = +m[1] || 0; if (/pm/i.test(m[3] || '') && h < 12) h += 12; return h; };
+  const MAILS = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'ymail.com', 'yahoo.com.ph'];
+  const dist = (a, b) => { const d = Array.from({ length: a.length + 1 }, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
+  // "andrea@gmial.com" -> "andrea@gmail.com"; nothing when the domain is fine or not close to a common one
+  const mailHint = v => { const m = /^([^@\s]+)@([^@\s]+)$/.exec(v.trim()); if (!m) return ''; const dom = m[2].toLowerCase(); if (MAILS.includes(dom)) return '';
+    const best = MAILS.map(x => [x, dist(dom, x)]).sort((a, b) => a[1] - b[1])[0]; return best[1] <= 2 ? `${m[1]}@${best[0]}` : ''; };
+  const earlyNote = () => B.tab === 'stay' && hourOf(B.eta) < hourOf(R.S.rules.checkin) ? `Check-in is from ${esc(R.S.rules.checkin)}. If you arrive earlier, your room may not be ready yet.` : '';
+  const LIMIT = { adults: 20, children: 10, pax: 100 };
   const kPeso = n => '₱' + (n >= 1000 ? Math.round(n / 100) / 10 + 'k' : Math.round(n));
   const plural = (n, w, ws) => `${n} ${n === 1 ? w : ws || w + 's'}`;
 
@@ -92,7 +102,7 @@
   const errP = id => errors[id] ? `<p class="err" id="e-${id}" role="alert">${esc(errors[id])}</p>` : '';
   const stepper = (k, label, sub, min) => `<div class="bk-step-row ${errors[k] ? 'has-err' : ''}"><div><b>${label}</b><small>${sub}</small></div><div class="bk-stepper">
     <button type="button" data-b="n" data-k="${k}" data-n="-1" aria-label="One less ${label.toLowerCase()}" ${B[k] <= min ? 'disabled' : ''}>−</button><output aria-live="polite">${B[k]}</output>
-    <button type="button" data-b="n" data-k="${k}" data-n="1" aria-label="One more ${label.toLowerCase()}">+</button></div></div>${errors[k] ? `<p class="err" role="alert">${esc(errors[k])}</p>` : ''}`;
+    <button type="button" data-b="n" data-k="${k}" data-n="1" aria-label="One more ${label.toLowerCase()}" ${B[k] >= LIMIT[k] ? 'disabled' : ''}>+</button></div></div>${errors[k] ? `<p class="err" role="alert">${esc(errors[k])}</p>` : ''}`;
   const STEPS = () => B.tab === 'stay' ? ['Dates', 'Room', 'Your details', 'Pay deposit'] : ['Date', 'Cottage', 'Your details', 'Pay deposit'];
   const progress = () => `<ol class="bk-progress" aria-label="Booking steps">${STEPS().map((s, i) => { const n = i + 1, mark = `<span>${n < B.step ? '✓' : n}</span>`;
     return `<li class="${n < B.step ? 'done' : n === B.step ? 'on' : ''}" ${n === B.step ? 'aria-current="step"' : ''}>${n < B.step ? `<button type="button" data-b="goto" data-v="${n}" aria-label="Step ${n}, ${s}: done. Go back to change it">${mark}${s}</button>` : `${mark}<b>${s}</b>`}</li>`; }).join('')}</ol>`;
@@ -117,13 +127,25 @@
   }
 
   // ---------- steps ----------
+  // under the first button: the cheapest option for these dates, or a heads-up that nothing is free
+  function preview() {
+    if (B.tab === 'stay') {
+      if (nights() < 1 || nights() > 30) return '';
+      const ok = roomOptions().filter(o => o.left > 0 && o.fits);
+      return ok.length ? `<p class="bk-preview" role="status">${plural(ok.length, 'room type')} free. From <b>${R.money(Math.min(...ok.map(o => o.total)))}</b> for ${plural(nights(), 'night')}, ${plural(people(), 'guest')}.</p>`
+        : `<p class="bk-preview none" role="status">No room is free for ${plural(people(), 'guest')} on these dates. Try other dates or fewer guests, or message us: big groups can book two rooms.</p>`;
+    }
+    const ok = cottageKinds().filter(k => k.free.length && B.pax <= k.cap);
+    return ok.length ? `<p class="bk-preview" role="status">Cottages for ${plural(B.pax, 'person', 'people')} from <b>${R.money(Math.min(...ok.map(k => k.price)))}</b>, plus entrance.</p>`
+      : `<p class="bk-preview none" role="status">No cottage is free for ${plural(B.pax, 'person', 'people')} that ${B.session === 'day' ? 'day' : 'night'}. Try another date or session.</p>`;
+  }
   const trip = (what, label) => `<div class="bk-trip">${R.icon('calendar')}<p>${what}</p><button type="button" class="btn ghost" data-b="goto" data-v="1" aria-label="Change ${label}">Change</button></div>`;
   function step1() {
     if (B.tab === 'day') return `<h1 tabindex="-1">When are you coming?</h1><p class="lead">Reserve a cottage so it's ready when your group arrives.</p>
       <div class="bk-card bk-search">${field('date', 'Date', `<input type="date" id="b-date" data-f="date" data-dp-info="day" min="${bd()}" value="${B.date}" ${aria('date')}>`, 'Open the calendar to see how many cottages are free each day')}
         <fieldset class="bk-choice"><legend>Session</legend>${[['day', 'Day tour', R.S.dayuse.hours.day], ['night', 'Night swim', R.S.dayuse.hours.night]].map(([v, l, h]) => `<label class="bk-opt"><input type="radio" name="sess" value="${v}" data-f="session" ${B.session === v ? 'checked' : ''}><span><b>${l}</b><small>${h}</small></span></label>`).join('')}</fieldset>
         ${stepper('pax', 'People', 'everyone coming, kids too', 1)}</div>
-      <button class="btn big bk-go" data-b="next">See available cottages</button>`;
+      <button class="btn big bk-go" data-b="next">See available cottages</button>${preview()}`;
     return `<h1 tabindex="-1">When are you staying?</h1><p class="lead">Check-in from ${esc(R.S.rules.checkin)}, check-out by ${esc(R.S.rules.checkout)}</p>
       <div class="bk-card bk-search bk-search-stay">
         <div class="bk-field bk-dates ${errors.arrive || errors.depart ? 'has-err' : ''}" data-dp-range role="group" aria-labelledby="l-dates"><span class="bk-label" id="l-dates">Dates</span>
@@ -131,7 +153,7 @@
           <input type="date" id="b-depart" data-f="depart" data-dp-label="Check-out" min="${addDays(bd(), 1)}" value="${B.depart}" ${aria('depart')}>
           ${errP('arrive')}${errP('depart')}<small class="hint">The calendar shows the lowest room price for each night</small></div>
         <div class="bk-guests"><span class="bk-label">Guests</span>${stepper('adults', 'Adults', '13 and older', 1)}${stepper('children', 'Children', '12 and younger', 0)}</div></div>
-      <button class="btn big bk-go" data-b="next">See available rooms</button>`;
+      <button class="btn big bk-go" data-b="next">See available rooms</button>${preview()}`;
   }
   function step2() {
     if (B.tab === 'day') {
@@ -144,7 +166,7 @@
             <div class="bk-price"><b>${R.money(k.price)}</b><span>for the ${B.session === 'day' ? 'day' : 'night swim'}, plus entrance</span></div>
             <p class="bk-left ${k.free.length <= 1 ? 'low' : ''}">${!k.free.length ? 'Fully reserved' : B.pax > k.cap ? `Too small for ${B.pax} people` : k.free.length <= 2 ? `Only ${k.free.length} left` : `${k.free.length} available`}</p>
             <button class="btn ${B.kind === k.kind ? '' : 'ghost'}" data-b="pick" data-v="${esc(k.kind)}" ${ok ? '' : 'disabled'}>${B.kind === k.kind ? 'Selected' : 'Choose'}</button></div></article>`; }).join('')}</div>
-        ${sel() ? '<button class="btn big bk-go" data-b="next">Continue</button>' : ''}
+        ${sel() ? `<button class="btn big bk-go" data-b="next">Continue with the ${esc(B.kind.toLowerCase())}</button>` : ''}
         ${K.every(k => !k.free.length || B.pax > k.cap) ? `<div class="bk-card bk-none"><b>Nothing fits on this date.</b><p class="muted">Try another date, split the group, or message us on Messenger and we'll find you a spot.</p><button class="btn ghost" data-b="back">Change date</button></div>` : ''}`;
     }
     const n = nights(), O = roomOptions().sort((a, b) => (b.left > 0 && b.fits) - (a.left > 0 && a.fits) || a.total - b.total);
@@ -160,20 +182,23 @@
           ${n > 1 ? `<details class="bk-nightly"><summary>Price for each night</summary><ul>${o.rates.map((r, i) => `<li><span>${R.fmt(addDays(B.arrive, i))}</span><span>${R.money(r)}</span></li>`).join('')}</ul></details>` : ''}
           <p class="bk-left ${o.left <= 2 ? 'low' : ''}">${!o.left ? 'Sold out for these dates' : !o.fits ? `Sleeps ${o.t.cap}: too small for ${people()}` : o.left <= 2 ? `Only ${o.left} left` : 'Available'}</p>
           <button class="btn ${B.type === o.t.id ? '' : 'ghost'}" data-b="pick" data-v="${o.t.id}" ${ok ? '' : 'disabled'} aria-label="${B.type === o.t.id ? 'Selected' : 'Choose'} ${esc(o.t.name)}, ${R.money(o.total)}">${B.type === o.t.id ? 'Selected' : 'Choose'}</button></div></article>`; }).join('')}</div>
-      ${sel() ? '<button class="btn big bk-go" data-b="next">Continue</button>' : ''}
+      ${sel() ? `<button class="btn big bk-go" data-b="next">Continue with the ${esc(sel().t.name)}</button>` : ''}
       ${O.every(o => !o.left || !o.fits) ? `<div class="bk-card bk-none"><b>No room fits ${people()} guests on these dates.</b><p class="muted">Try other dates, or message us: big groups can book two rooms.</p><button class="btn ghost" data-b="back">Change dates</button></div>` : ''}`;
   }
   function step3() {
     return `<button class="bk-back" data-b="back">${R.icon('back')}Back</button><h1 tabindex="-1">Your details</h1><p class="lead">We'll text your confirmation. Takes less than a minute.</p>
       <div class="bk-layout"><form class="bk-card" id="b-form" novalidate>
-        ${field('name', 'Full name', `<input id="b-name" data-f="name" autocomplete="name" value="${esc(B.name)}" placeholder="e.g. Maria Santos" ${aria('name')}>`)}
-        ${field('phone', 'Mobile number', `<input id="b-phone" data-f="phone" type="tel" inputmode="tel" autocomplete="tel" value="${esc(B.phone)}" placeholder="0917 123 4567" ${aria('phone')}>`, 'For your confirmation text and arrival updates')}
-        ${field('email', 'Email <span class="opt">(optional)</span>', `<input id="b-email" data-f="email" type="email" inputmode="email" autocomplete="email" value="${esc(B.email)}" placeholder="name@gmail.com" ${aria('email')}>`, 'For a copy of your booking')}
-        ${B.tab === 'stay' ? field('eta', 'Arriving around', `<select id="b-eta" data-f="eta">${['12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '20:00', '22:00'].map(t => `<option ${B.eta === t ? 'selected' : ''}>${t}</option>`).join('')}</select>`)
-          : field('eta', 'Arriving around', `<select id="b-eta" data-f="eta">${(B.session === 'day' ? ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00'] : ['18:00', '19:00', '20:00']).map(t => `<option ${B.eta === t ? 'selected' : ''}>${t}</option>`).join('')}</select>`)}
-        ${field('requests', 'Special requests <span class="opt">(optional)</span>', `<textarea id="b-requests" data-f="requests" rows="2" placeholder="${B.tab === 'stay' ? 'e.g. birthday surprise, ground floor, baby crib' : 'e.g. birthday, sound system, bringing lechon'}">${esc(B.requests)}</textarea>`)}
+        ${field('name', 'Full name', `<input id="b-name" name="name" data-f="name" autocomplete="name" autocapitalize="words" enterkeyhint="next" value="${esc(B.name)}" placeholder="e.g. Maria Santos" ${aria('name')}>`)}
+        ${field('phone', 'Mobile number', `<input id="b-phone" name="tel" data-f="phone" type="tel" inputmode="tel" autocomplete="tel" enterkeyhint="next" value="${esc(B.phone)}" placeholder="0917 123 4567" ${aria('phone')}>`, 'For your confirmation text and arrival updates')}
+        ${field('email', 'Email <span class="opt">(optional)</span>', `<input id="b-email" name="email" data-f="email" type="email" inputmode="email" autocomplete="email" spellcheck="false" autocapitalize="off" enterkeyhint="next" value="${esc(B.email)}" placeholder="name@gmail.com" ${aria('email')}>`, 'For a copy of your booking')}
+        ${B.tab === 'stay' ? field('eta', 'Arriving around', `<select id="b-eta" data-f="eta">${['12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '20:00', '22:00'].map(t => `<option value="${t}" ${B.eta === t ? 'selected' : ''}>${time12(t)}</option>`).join('')}</select>`)
+          + `<p class="hint bk-early" id="b-early" aria-live="polite">${earlyNote()}</p>`
+          : field('eta', 'Arriving around', `<select id="b-eta" data-f="eta">${(B.session === 'day' ? ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00'] : ['18:00', '19:00', '20:00']).map(t => `<option value="${t}" ${B.eta === t ? 'selected' : ''}>${time12(t)}</option>`).join('')}</select>`)}
+        ${field('requests', 'Special requests <span class="opt">(optional)</span>', `<textarea id="b-requests" data-f="requests" rows="2" aria-describedby="b-req-chips" placeholder="${B.tab === 'stay' ? 'e.g. birthday surprise, ground floor, baby crib' : 'e.g. birthday, sound system, bringing lechon'}">${esc(B.requests)}</textarea>`)}
+        <div class="bk-chips" id="b-req-chips" role="group" aria-label="Add a common request">${(B.tab === 'stay' ? ['Birthday', 'Anniversary', 'Ground floor', 'Baby crib', 'Late arrival'] : ['Birthday', 'Sound system', 'Bringing lechon', 'Extra chairs']).map(x => `<button type="button" class="bk-chip" data-b="req" data-v="${x}" aria-pressed="${B.requests.toLowerCase().includes(x.toLowerCase())}">+ ${x}</button>`).join('')}</div>
         <label class="bk-check ${errors.consent ? 'has-err' : ''}"><input type="checkbox" id="b-consent" data-f="consent" ${B.consent ? 'checked' : ''} ${aria('consent')}><span>I agree that Camsair keeps my details for this booking, as in the privacy notice (Data Privacy Act).</span></label>
         ${errors.consent ? `<p class="err" id="e-consent" role="alert">${esc(errors.consent)}</p>` : ''}
+        <details class="bk-privacy"><summary>Read the privacy notice</summary><p>We ask for your name, mobile number and, if you like, your email, only to hold this booking, send your confirmation and contact you about your ${B.tab === 'stay' ? 'stay' : 'visit'}. Only Camsair staff see them. Under the Data Privacy Act of 2012 you can ask us to see, correct or delete your details: message Camsair Resort on Messenger or text 0917 555 0101.</p></details>
         <button class="btn big bk-go" data-b="next">Continue to payment</button></form>
         <aside class="bk-aside">${summary(true)}</aside></div>`;
   }
@@ -269,25 +294,56 @@
     if (errors[f]) { delete errors[f]; const box = el.closest('.has-err'); if (box) { box.classList.remove('has-err'); const m = box.querySelector('.err'); if (m) m.remove(); el.removeAttribute('aria-invalid'); } }
     keep();
   });
-  document.addEventListener('submit', e => e.preventDefault());
+  function next() {
+    errors = check(B.step);
+    if (Object.keys(errors).length) { render(false); return; }
+    go(B.step + 1);
+  }
+  // Enter in the details form goes on, even on phones where the form's own button is hidden behind the docked bar
+  document.addEventListener('submit', e => { e.preventDefault(); if (e.target.id === 'b-form') next(); });
+  document.addEventListener('change', e => { if (e.target.id === 'b-eta' && $('#b-early')) $('#b-early').innerHTML = earlyNote(); }); // early-arrival note
+
+  // leaving the phone or email box: tidy the number, point out a likely typo or a wrong number straight away.
+  // While a mouse button or finger is down we wait until it is released, so the page doesn't move under a click.
+  let pointerDown = false, pending = null;
+  document.addEventListener('pointerdown', () => { pointerDown = true; }, true);
+  const released = () => { pointerDown = false; if (pending) { const f = pending; pending = null; setTimeout(f, 0); } };
+  document.addEventListener('pointerup', released, true);
+  document.addEventListener('pointercancel', released, true); // a finger that starts a scroll ends with a cancel, not an up
+  document.addEventListener('focusout', e => {
+    const el = e.target, f = el.dataset && el.dataset.f;
+    if (f !== 'phone' && f !== 'email') return;
+    if (f === 'phone' && phoneOk(el.value)) { el.value = B.phone = phoneNice(el.value.replace(/[\s-]/g, '')); keep(); }
+    const run = () => {
+      if (!el.isConnected || !el.value.trim()) return;
+      const box = el.closest('.bk-field'), msg = check(3)[f];
+      if (msg && !box.querySelector('.err')) { errors[f] = msg; box.classList.add('has-err'); el.setAttribute('aria-invalid', 'true'); el.setAttribute('aria-describedby', 'e-' + f); box.insertAdjacentHTML('beforeend', `<p class="err" id="e-${f}" role="alert">${esc(msg)}</p>`); }
+      const hint = f === 'email' && !msg && mailHint(el.value), old = box.querySelector('.bk-suggest');
+      if (old) old.remove();
+      if (hint) box.insertAdjacentHTML('beforeend', `<p class="bk-suggest" role="status">Did you mean <button type="button" data-b="mail" data-v="${esc(hint)}">${esc(hint)}</button>?</p>`);
+    };
+    if (pointerDown) pending = run; else run();
+  });
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-b]'); if (!b) return;
     e.preventDefault();
     const a = b.dataset.b;
     if (a === 'tab') { B.tab = b.dataset.v; B.step = 1; B.type = ''; B.kind = ''; errors = {}; keep(); render(true); }
-    else if (a === 'n') { B[b.dataset.k] = Math.max(b.dataset.k === 'children' ? 0 : 1, B[b.dataset.k] + +b.dataset.n); B.type = ''; B.kind = ''; keep(); render(false); }
+    else if (a === 'n') { B[b.dataset.k] = Math.min(LIMIT[b.dataset.k], Math.max(b.dataset.k === 'children' ? 0 : 1, B[b.dataset.k] + +b.dataset.n)); B.type = ''; B.kind = ''; keep(); render(false); }
     else if (a === 'pick') { if (B.tab === 'stay') B.type = b.dataset.v; else B.kind = b.dataset.v; errors = {}; keep(); render(false); }
     else if (a === 'back') go(Math.max(1, B.step - 1));
+    else if (a === 'req') {
+      const t = $('#b-requests'), v = b.dataset.v, has = B.requests.toLowerCase().includes(v.toLowerCase());
+      if (!has) { B.requests = (B.requests.trim() ? B.requests.trim().replace(/[.,]$/, '') + ', ' : '') + v; t.value = B.requests; b.setAttribute('aria-pressed', 'true'); keep(); }
+      t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+    }
+    else if (a === 'mail') { const i = $('#b-email'); i.value = B.email = b.dataset.v; keep(); b.closest('.bk-suggest').remove(); i.focus(); }
     else if (a === 'goto') { const s = +b.dataset.v; if (s < B.step) go(s); }
     else if (a === 'copy') {
       const ref = B.done.ref, ok = () => R.toast(`Booking number ${ref} copied`);
       if (navigator.clipboard) navigator.clipboard.writeText(ref).then(ok, () => R.toast('Copy failed. Write down ' + ref)); else R.toast('Write down your booking number: ' + ref);
     }
-    else if (a === 'next') {
-      errors = check(B.step);
-      if (Object.keys(errors).length) { render(false); return; }
-      go(B.step + 1);
-    }
+    else if (a === 'next') next();
     else if (a === 'pay') {
       if (busy) return;
       for (const s of [1, 2, 3]) { errors = check(s); if (Object.keys(errors).length) { go(s); errors = check(s); render(false); return; } }
