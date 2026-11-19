@@ -263,6 +263,33 @@
   };
   R.rerender = () => { R.save(); R.render(); };
 
+  // ---------- pieces shared by the booking forms (room booking, cottage reservation) ----------
+  R.fx = {
+    // one-tap choices: radios that look like chips. list = [[value, label, disabled?, extraClass?]]
+    chips: (name, list, cur, legend) => `<fieldset class="nb-set"><legend>${legend}</legend><div class="nb-chips">${list.map(([v, l, off, cls]) => `<label class="nb-chip ${cls || ''}"><input type="radio" name="${name}" value="${esc(v)}" ${v === cur ? 'checked' : ''} ${off ? 'disabled' : ''}><span>${l}</span></label>`).join('')}</div></fieldset>`,
+    // a number with − and + buttons; the box can still be typed in
+    count: (id, label, sub, v, min, max) => `<div class="nb-count"><label for="${id}"><b>${label}</b>${sub ? `<small>${sub}</small>` : ''}</label><div class="nb-step">
+      <button type="button" data-nbstep="-1" data-id="${id}" aria-label="One less ${label.toLowerCase()}" ${v <= min ? 'disabled' : ''}>−</button><input id="${id}" type="number" inputmode="numeric" value="${v}" min="${min}" max="${max}">
+      <button type="button" data-nbstep="1" data-id="${id}" aria-label="One more ${label.toLowerCase()}" ${v >= max ? 'disabled' : ''}>+</button></div></div>`,
+    // call from the form's click listener; returns true when it handled a − / + click
+    step: (e, root) => { const s = e.target.closest('[data-nbstep]'); if (!s) return false; const i = root.querySelector('#' + s.dataset.id); i.value = Math.min(+i.max, Math.max(+i.min, (+i.value || 0) + +s.dataset.nbstep)); i.dispatchEvent(new Event('input', { bubbles: true })); return true; },
+    stepState: root => root.querySelectorAll('[data-nbstep]').forEach(s => { const i = root.querySelector('#' + s.dataset.id); s.disabled = +s.dataset.nbstep < 0 ? +i.value <= +i.min : +i.value >= +i.max; }),
+    radio: (root, name) => { const x = root.querySelector(`input[name="${name}"]:checked`); return x ? x.value : ''; },
+    // errors next to the field
+    clearErr: (root, id) => { const el = root.querySelector('#' + id), box = el && el.closest('.field'); if (!box) return; box.classList.remove('has-err'); el.removeAttribute('aria-invalid'); el.removeAttribute('aria-describedby'); const m = box.querySelector(':scope > .err'); if (m) m.remove(); },
+    setErr: (root, id, msg) => { const el = root.querySelector('#' + id), box = el.closest('.field'); R.fx.clearErr(root, id); box.classList.add('has-err'); el.setAttribute('aria-invalid', 'true'); el.setAttribute('aria-describedby', 'fxE-' + id); box.insertAdjacentHTML('beforeend', `<p class="err" id="fxE-${id}">${esc(msg)}</p>`); },
+    // show every problem at once; the line by the buttons sums them up; focus goes to the first
+    report: (root, errs, line) => {
+      root.querySelectorAll('.field.has-err').forEach(f => { const i = f.querySelector('input,textarea,select'); if (i) R.fx.clearErr(root, i.id); });
+      errs.forEach(([id, m]) => R.fx.setErr(root, id, m));
+      line.textContent = errs.length ? (errs.length === 1 ? errs[0][1] : `Fix ${errs.length} things above. ${errs[0][1]}`) : '';
+      if (errs.length) { const el = root.querySelector('#' + errs[0][0]), t = el.hidden && el.id && document.querySelector(`[data-for="${el.id}"]`); (t || el).focus(); }
+      return !errs.length;
+    },
+    time12: t => { const [h, m] = t.split(':').map(Number); return `${(h + 11) % 12 + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : h === 12 && !m ? 'noon' : 'pm'}`; },
+    plural: (n, w, ws) => `${n} ${n === 1 ? w : ws || w + 's'}`
+  };
+
   // ---------- modal (focus stays inside, returns to where it was) + toast ----------
   let lastFocus = null, onClose = null;
   R.modal = function (title, html, mount, opts) {
@@ -270,7 +297,8 @@
     if (back.hidden) lastFocus = document.activeElement;
     onClose = null;
     document.getElementById('modalTitle').textContent = title;
-    document.querySelector('#modalBack .modal').className = 'modal' + (opts && opts.wide ? ' wide' : '');
+    // tall: the dialog fits the window, only the form scrolls, the header and the buttons stay put
+    document.querySelector('#modalBack .modal').className = 'modal' + (opts && opts.wide ? ' wide' : '') + (opts && opts.tall ? ' tall' : '');
     // a fresh body each time, so listeners added by the last dialog don't run again in this one
     const old = document.getElementById('modalBody'), body = old.cloneNode(false);
     old.replaceWith(body);

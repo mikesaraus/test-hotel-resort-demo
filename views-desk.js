@@ -359,7 +359,7 @@
   // A summary on the side always shows the total and the deposit.
   R.act.newBooking = d => R.newBooking(d || {});
   const NB_PAY = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer', 'Prepaid on booking site'];
-  const nbPlural = (n, w, ws) => `${n} ${n === 1 ? w : ws || w + 's'}`;
+  const nbPlural = R.fx.plural;
   if (window.DP) {
     // the arrival calendar shows how many rooms are free each night
     DP.info.nbFree = d => { const n = R.freeRooms(null, d, 1).length; return n ? { text: `${n} free`, tone: n <= 2 ? 'few' : '', note: nbPlural(n, 'room') + ' free' } : { text: 'Full', full: true, note: 'every room taken' }; };
@@ -370,10 +370,7 @@
     const srcs = R.S.sources.map(s => s.name);
     const a0 = pre.date && pre.date >= bd() ? pre.date : bd();
     const st = { type: pre.type || '', room: pre.room || '', guest: pre.guest ? R.findGuest(pre.guest) || null : null, ch: srcs.includes(pre.ch) ? pre.ch : 'Facebook Messenger', dep: '', rate: false };
-    const count = (id, label, sub, v, min, max) => `<div class="nb-count"><label for="${id}"><b>${label}</b><small>${sub}</small></label><div class="nb-step">
-      <button type="button" data-nbstep="-1" data-id="${id}" aria-label="One less ${label.toLowerCase()}">−</button><input id="${id}" type="number" inputmode="numeric" value="${v}" min="${min}" max="${max}">
-      <button type="button" data-nbstep="1" data-id="${id}" aria-label="One more ${label.toLowerCase()}">+</button></div></div>`;
-    const chips = (name, list, cur, label) => `<fieldset class="nb-set"><legend>${label}</legend><div class="nb-chips">${list.map(([v, l]) => `<label class="nb-chip"><input type="radio" name="${name}" value="${esc(v)}" ${v === cur ? 'checked' : ''}><span>${esc(l)}</span></label>`).join('')}</div></fieldset>`;
+    const { count } = R.fx, chips = (name, list, cur, legend) => R.fx.chips(name, list.map(([v, l]) => [v, esc(l)]), cur, legend);
     R.modal('New booking', `<form class="nb" id="nbForm" novalidate><div class="nb-main">
       <section class="nb-sec" aria-labelledby="nbH1"><h3 id="nbH1">Dates and guests</h3>
         <div class="nb-dates" data-dp-range>
@@ -402,7 +399,7 @@
       <div class="foot nb-foot"><p id="nbErr" role="alert"></p><button type="button" class="btn ghost" data-act="closeModal">Cancel</button><button type="submit" form="nbForm" class="btn" id="nbGo">Create booking</button></div>`, b => {
       const $ = s => b.querySelector(s), $$ = s => [...b.querySelectorAll(s)];
       const int = (id, lo, hi) => Math.min(hi, Math.max(lo, Math.round(+$(id).value) || lo));
-      const radio = n => { const x = b.querySelector(`input[name="${n}"]:checked`); return x ? x.value : ''; };
+      const radio = n => R.fx.radio(b, n);
       const lateFor = a => st.ch === 'Walk-in' && a === bd() && R.seasonOn(bd(), null, 'walkin', R.now());
       const ratesFor = (t, a, n) => { const r = R.quote(t.id, a, n), late = lateFor(a); if (late) r[0] = Math.round(r[0] * (1 + late.pct / 100) / 50) * 50; return r; };
       // everything the rest of the form needs, read from the boxes
@@ -476,9 +473,7 @@
         $('#nbGo').textContent = x.left ? `Create booking, ${R.money(x.total)}` : 'Sold out for these dates';
         return x;
       };
-      // ----- errors next to the field -----
-      const clearErr = id => { const el = $('#' + id), box = el && el.closest('.field'); if (!box) return; box.classList.remove('has-err'); el.removeAttribute('aria-invalid'); const m = box.querySelector('.err'); if (m) m.remove(); };
-      const setErr = (id, msg) => { const el = $('#' + id), box = el.closest('.field'); clearErr(id); box.classList.add('has-err'); el.setAttribute('aria-invalid', 'true'); el.setAttribute('aria-describedby', 'nbE-' + id); box.insertAdjacentHTML('beforeend', `<p class="err" id="nbE-${id}">${esc(msg)}</p>`); };
+      const clearErr = id => R.fx.clearErr(b, id);
 
       // ----- events (on the form: the dialog body is reused by every dialog, the form is new each time) -----
       const form = $('#nbForm');
@@ -490,12 +485,11 @@
         if (name === 'nbCh') { st.ch = e.target.value; paintTypes(); return; }
         if (id === 'nbGuest') { const m = e.target.value.match(/ — (G\d+)$/); if (m && R.guest(m[1])) return choose(R.guest(m[1])); paintGuest(); paint(); return; }
         if (id === 'nbPhone') { paintGuest(); return; }
-        if (['nbArr', 'nbOut', 'nbA', 'nbC'].includes(id)) { $$('[data-nbstep]').forEach(s => { const i = $('#' + s.dataset.id); s.disabled = +s.dataset.nbstep < 0 ? +i.value <= +i.min : +i.value >= +i.max; }); paintTypes(); return; }
+        if (['nbArr', 'nbOut', 'nbA', 'nbC'].includes(id)) { R.fx.stepState(b); paintTypes(); return; }
         paint();
       });
       form.addEventListener('click', e => {
-        const s = e.target.closest('[data-nbstep]');
-        if (s) { const i = $('#' + s.dataset.id); i.value = Math.min(+i.max, Math.max(+i.min, (+i.value || 0) + +s.dataset.nbstep)); i.dispatchEvent(new Event('input', { bubbles: true })); return; }
+        if (R.fx.step(e, form)) return;
         const h = e.target.closest('.nb-hit');
         if (h) { choose(R.guest(h.dataset.g)); $('#nbChange').focus(); return; }
         if (e.target.closest('#nbChange')) { const name = st.guest.name; st.guest = null; $('#nbGuest').value = name; paintGuest(); paint(); $('#nbGuest').focus(); $('#nbGuest').select(); return; }
@@ -515,15 +509,13 @@
 
       const go = () => {
         const x = paint(), errs = [], name = $('#nbGuest').value.trim(), dep = radio('nbDep');
-        const add = (id, msg) => { setErr(id, msg); errs.push([id, msg]); };
-        b.querySelectorAll('.field.has-err').forEach(f => { const i = f.querySelector('input,textarea'); if (i) clearErr(i.id); });
+        const add = (id, msg) => errs.push([id, msg]);
         if (!x.left) return;
         if (!st.guest && name.length < 3) add('nbGuest', 'Enter the guest name, or pick a returning guest.');
         if (!st.guest && name.length >= 3 && $('#nbPhone').value.replace(/\D/g, '').length < 7) add('nbPhone', 'Enter a mobile number for the new guest.');
         if (x.ppl > x.t.cap && $('#nbOver').value.trim().length < 5) add('nbOver', `${x.ppl} guests is more than the ${x.t.name} sleeps (${x.t.cap}). Write why it's OK.`);
         if (dep && dep !== 'Cash' && $('#nbRef').value.trim().length < 4) add('nbRef', 'Enter the payment reference number.');
-        $('#nbErr').textContent = errs.length ? (errs.length === 1 ? errs[0][1] : `Fix ${errs.length} things above. ${errs[0][1]}`) : '';
-        if (errs.length) { $('#' + errs[0][0]).focus(); return; }
+        if (!R.fx.report(b, errs, $('#nbErr'))) return;
         let g = st.guest;
         const vals = { name, phone: $('#nbPhone').value.trim(), email: $('#nbEmail').value.trim(), ch: st.ch, adults: x.adults, children: x.children, room: radio('nbRoom'), rate: x.rate, dep, ref: $('#nbRef').value.trim(),
           notes: [$('#nbNotes').value.trim(), x.ppl > x.t.cap ? `Over capacity (${x.ppl} in a room for ${x.t.cap}): ${$('#nbOver').value.trim()}` : ''].filter(Boolean).join(' · ') };
@@ -543,7 +535,7 @@
         }
         create();
       };
-    }, { wide: true });
+    }, { wide: true, tall: true });
   };
 
   // ---------- Front desk (home) ----------

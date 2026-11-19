@@ -386,69 +386,139 @@
 
   R.act.newEvent = d => {
     if (!R.need('till')) return;
-    const D = R.S.dayuse;
+    const D = R.S.dayuse, fx = R.fx;
     const stays = R.S.reservations.filter(r => (r.status === 'booked' || r.status === 'inhouse') && R.dep(r) >= bd()).sort((a, b) => (a.room || '').localeCompare(b.room || '', undefined, { numeric: true }));
     const pre = d.res ? R.res(d.res) : null;
-    R.modal('Reserve a cottage or the pavilion', `<div class="form">
-      <label class="field full">Staying guest (optional)<select id="evR"><option value="">Day visitors (no room booking)</option>${stays.map(r => `<option value="${r.id}" ${pre && pre.id === r.id ? 'selected' : ''}>${r.room ? 'Room ' + r.room : r.id} · ${esc(R.guest(r.guestId).name)} · ${R.fmtShort(r.arrive)} → ${R.fmtShort(R.dep(r))}</option>`).join('')}</select></label>
-      <label class="field">Cottage<select id="evV">${D.cottages.map(c => `<option value="${c.id}" ${c.id === d.venue ? 'selected' : ''}>${esc(c.name)} · up to ${c.cap} · ${R.money(c.price)}</option>`).join('')}</select></label>
-      <label class="field">Date<input id="evD" type="date" min="${bd()}" value="${d.date || addDays(bd(), 1)}"></label>
-      <label class="field">Session<select id="evS">${Object.entries(SESS).map(([k, l]) => `<option value="${k}" ${k === d.session ? 'selected' : ''}>${l} (${D.hours[k]})</option>`).join('')}</select></label>
-      <label class="field">Arriving around<input id="evE" type="time" value="09:00"></label>
-      <label class="field">Group name<input id="evN" placeholder="e.g. Santos birthday" autofocus></label>
-      <label class="field">Mobile<input id="evP" placeholder="+63 9xx xxx xxxx"></label>
-      <label class="field">Number of guests<input id="evX" type="number" min="1" value="10"></label>
-      <label class="field">Food package<select id="evK"><option value="">None</option>${PACKAGES.map((p, i) => `<option value="${i}">${p.name}, ${R.money(p.price)} per head</option>`).join('')}</select></label>
-      <label class="field full" id="evOverW" hidden>Over capacity: why is it OK? (required)<input id="evOver" placeholder="e.g. 5 are small children, extra tables added"></label>
-      <label class="field full">Notes<input id="evNo" placeholder="e.g. sound system, decorations from 3 pm"></label>
-      <div class="full" id="evQ"></div>
-      <label class="field">Deposit received<select id="evDep"><option value="">Not yet</option>${['GCash', 'Cash', 'Maya', 'Bank transfer'].map(m => `<option>${m}</option>`).join('')}</select></label>
-      <label class="field">Deposit amount (₱)<input id="evAmt" type="number" min="0"></label>
-      <label class="field full">Deposit reference<input id="evRef" placeholder="GCash / bank reference"></label></div>
-      <p class="small warn-text" id="evErr" style="min-height:1.4em;margin-top:6px"></p>
-      <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="evGo">Reserve</button></div>`, b => {
-      const $ = x => b.querySelector(x);
-      let lastPrice = -1;
+    const KINDS = [...new Set(D.cottages.map(c => c.kind))];
+    const preV = R.venue(d.venue);
+    const st = { kind: preV ? preV.kind : '', venue: preV ? preV.id : '', session: SESS[d.session] ? d.session : 'day', who: pre ? 'stay' : 'day', pkg: '', dep: '' };
+    const TIMES = { day: ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00'], night: ['18:00', '19:00', '20:00'] };
+    const times = s => TIMES[s].map(t => `<option value="${t}">${fx.time12(t)}</option>`).join('');
+    // the date calendar shows how many cottages are still free for the session
+    if (window.DP) {
+      DP.info.evFree = day => { const n = D.cottages.filter(c => !vTaken(c.id, day, st.session)).length; return n ? { text: `${n} free`, tone: n <= 2 ? 'few' : '', note: fx.plural(n, 'cottage') + ' free' } : { text: 'Full', full: true, note: 'every cottage reserved' }; };
+      DP.info.evFree.legend = () => `Cottages still free for the ${SESS[st.session].toLowerCase()}. <i style="background:#8A5F1C"></i>2 or fewer left <i style="background:var(--hibiscus)"></i>Full`;
+    }
+    R.modal('Reserve a cottage', `<form class="nb" id="evForm" novalidate><div class="nb-main">
+      <section class="nb-sec" aria-labelledby="evH1"><h3 id="evH1">Date and group size</h3>
+        <div class="nb-pair"><label class="field">Date<input id="evD" type="date" data-dp-info="evFree" min="${bd()}" value="${d.date || addDays(bd(), 1)}"></label>
+          ${fx.count('evX', 'Guests', 'everyone coming, kids too', pre ? pre.adults + pre.children : 10, 1, 200)}</div>
+        <div class="nb-pair">${fx.chips('evS', Object.entries(SESS).map(([k, l]) => [k, `${l} <small>${esc(D.hours[k])}</small>`]), st.session, 'Session')}
+          <label class="field">Arriving around<select id="evE">${times(st.session)}</select></label></div></section>
+      <section class="nb-sec" aria-labelledby="evH2"><h3 id="evH2">Cottage</h3>
+        <div class="nb-types" id="evKinds" role="radiogroup" aria-labelledby="evH2"></div>
+        <div id="evVs"></div>
+        <label class="field" id="evOverW" hidden>More guests than it holds: why is it OK?<input id="evOver" placeholder="e.g. 5 are small children, extra tables added"></label>
+        ${fx.chips('evK', [['', 'No food'], ...PACKAGES.map((p, i) => [String(i), `${esc(p.name)} <small>${R.money(p.price)} a head</small>`])], '', 'Food package')}</section>
+      <section class="nb-sec" aria-labelledby="evH3"><h3 id="evH3">Group</h3>
+        ${stays.length ? fx.chips('evWho', [['day', 'Day visitors'], ['stay', 'Staying guest']], st.who, 'Who is coming') : ''}
+        <label class="field" id="evRW" ${st.who === 'stay' ? '' : 'hidden'}>Booking<select id="evR"><option value="">Pick the staying guest</option>${stays.map(r => `<option value="${r.id}" ${pre && pre.id === r.id ? 'selected' : ''}>${r.room ? 'Room ' + r.room : r.id}, ${esc(R.guest(r.guestId).name)}, ${R.fmtShort(r.arrive)} to ${R.fmtShort(R.dep(r))}</option>`).join('')}</select></label>
+        <div class="form"><label class="field">Group name<input id="evN" placeholder="e.g. Santos birthday"></label>
+          <label class="field">Mobile number<input id="evP" type="tel" inputmode="tel" placeholder="0917 123 4567"></label></div>
+        <label class="field">Notes<textarea id="evNo" rows="2" placeholder="e.g. sound system, decorations from 3 pm"></textarea></label></section>
+      <section class="nb-sec" aria-labelledby="evH4"><h3 id="evH4">Deposit</h3>
+        ${fx.chips('evDep', [['', 'Not yet'], ...['Cash', 'GCash', 'Maya', 'Bank transfer'].map(m => [m, m])], '', 'Deposit received')}
+        <div class="form" id="evPayW" hidden><label class="field">Amount (₱)<input id="evAmt" type="number" inputmode="numeric" min="0"></label>
+          <label class="field" id="evRefW">Payment reference<input id="evRef" spellcheck="false" placeholder="GCash or bank reference number"></label></div></section>
+      </div><aside class="nb-side"><div id="evQ" aria-live="polite"></div></aside></form>
+      <div class="foot nb-foot"><p id="evErr" class="fx-err" role="alert"></p><button type="button" class="btn ghost" data-act="closeModal">Cancel</button><button type="submit" form="evForm" class="btn" id="evGo">Reserve</button></div>`, b => {
+      const $ = x => b.querySelector(x), $$ = x => [...b.querySelectorAll(x)], form = $('#evForm');
+      let lastPrice = -1, amtTouched = false;
       // a staying guest: fill their details and keep the date inside their stay
       const pickStay = () => {
-        const r = R.res($('#evR').value);
+        const r = st.who === 'stay' && R.res($('#evR').value);
         if (!r) { $('#evD').min = bd(); $('#evD').removeAttribute('max'); return; }
         const g = R.guest(r.guestId), from = r.arrive > bd() ? r.arrive : bd();
         $('#evD').min = from; $('#evD').max = R.dep(r);
         if ($('#evD').value < from || $('#evD').value > R.dep(r)) $('#evD').value = from;
-        $('#evN').value = `Room ${r.room || r.id} · ${g.name}`; $('#evP').value = g.phone; $('#evX').value = r.adults + r.children;
+        $('#evN').value = `Room ${r.room || r.id} · ${g.name}`; $('#evP').value = g.phone; $('#evX').value = r.adults + r.children; fx.stepState(b);
       };
-      $('#evR').addEventListener('change', () => { pickStay(); q(); });
-      if (pre) pickStay();
       const q = () => {
-        const c = R.venue($('#evV').value), pax = Math.max(1, +$('#evX').value || 1), k = $('#evK').value, pk = k === '' ? null : PACKAGES[+k];
-        const price = c.price + (pk ? pk.price * pax : 0), taken = vTaken(c.id, $('#evD').value, $('#evS').value);
-        if (price !== lastPrice) { $('#evAmt').value = Math.round(price * R.S.rules.deposit / 100); lastPrice = price; }
-        $('#evQ').innerHTML = `<div class="note ${taken || pax > c.cap ? 'warn' : ''}"><div>${taken ? `<b>${esc(c.name)} is already reserved</b> for that ${SESS[$('#evS').value].toLowerCase()}. Pick another cottage or date.` : `<b>${R.money(price)}</b> for the ${esc(c.name.toLowerCase())}${pk ? ` and ${pax} × ${esc(pk.name.toLowerCase())}` : ''}. Entrance fees are paid on the day. Suggested ${R.S.rules.deposit}% deposit: ${R.money(price * R.S.rules.deposit / 100)}.`}
-          ${pax > c.cap ? `<div class="warn-text">${esc(c.name)} holds ${c.cap}. Choose a bigger cottage or the pavilion, or write why it's OK below.</div>` : ''}</div></div>`;
-        $('#evOverW').hidden = pax <= c.cap;
-        $('#evGo').disabled = taken;
-        return { c, pax, pk, price };
+        const date = $('#evD').value, pax = Math.max(1, Math.round(+$('#evX').value) || 1), c = R.venue(st.venue) || D.cottages[0];
+        const pk = st.pkg === '' ? null : PACKAGES[+st.pkg], price = c.price + (pk ? pk.price * pax : 0);
+        return { date, pax, c, pk, price, taken: vTaken(c.id, date, st.session), deposit: Math.round(price * R.S.rules.deposit / 100) };
       };
-      b.querySelectorAll('input,select').forEach(i => i.addEventListener('input', q)); q();
-      $('#evGo').onclick = () => {
-        const x = q(), err = m => { $('#evErr').textContent = m; };
-        const stay = R.res($('#evR').value);
-        if (stay && ($('#evD').value < stay.arrive || $('#evD').value > R.dep(stay))) return err(`Pick a date during the stay: ${R.fmtShort(stay.arrive)} to ${R.fmtShort(R.dep(stay))}.`);
-        if ($('#evN').value.trim().length < 3) return err('Enter the group name.');
-        if ($('#evP').value.trim().length < 7) return err('Enter a mobile number.');
-        if (x.pax > x.c.cap && $('#evOver').value.trim().length < 5) return err(`${x.pax} guests is more than ${x.c.name} holds (${x.c.cap}). Write why it's OK.`);
-        const dep = $('#evDep').value, amt = +$('#evAmt').value || 0;
-        if (dep && !(amt > 0)) return err('Enter the deposit amount.');
-        if (dep && dep !== 'Cash' && $('#evRef').value.trim().length < 4) return err('Enter the deposit reference number.');
-        const v = { id: R.nextId('EV'), venue: x.c.id, date: $('#evD').value, session: $('#evS').value, name: $('#evN').value.trim(), phone: $('#evP').value.trim(), pax: x.pax, catering: x.pk, eta: $('#evE').value || '09:00', notes: $('#evNo').value.trim(), overNote: x.pax > x.c.cap ? $('#evOver').value.trim() : '', resId: $('#evR').value || '', price: x.price, status: 'booked', payments: [], created: bd() };
+      // ----- cottage kinds, then which one -----
+      const paintKinds = () => {
+        const x = q(), freeOf = k => D.cottages.filter(c => c.kind === k && !vTaken(c.id, x.date, st.session));
+        if (!st.kind) st.kind = (KINDS.find(k => freeOf(k).length && D.cottages.find(c => c.kind === k).cap >= x.pax) || KINDS[0]);
+        $('#evKinds').innerHTML = KINDS.map(k => {
+          const all = D.cottages.filter(c => c.kind === k), free = freeOf(k).length, cap = Math.max(...all.map(c => c.cap)), price = Math.min(...all.map(c => c.price)), small = x.pax > cap;
+          return `<label class="nb-type ${st.kind === k ? 'on' : ''} ${free ? '' : 'off'}"><input type="radio" name="evKind" value="${esc(k)}" ${st.kind === k ? 'checked' : ''}>
+            <span class="nb-type-name"><b>${esc(k)}</b><small>Holds ${cap}${small ? `, <span class="warn-text">too small for ${x.pax}</span>` : ''}</small></span>
+            <span class="nb-type-left ${free && free <= 2 ? 'few' : ''}">${free ? (all.length > 1 ? `${free} of ${all.length} free` : 'Free') : 'Reserved'}</span>
+            <span class="nb-type-price"><b>${R.money(price)}</b><small>${st.session === 'day' ? 'the day' : 'the night'}</small></span></label>`;
+        }).join('');
+        paintVenues();
+      };
+      const paintVenues = () => {
+        const x = q(), all = D.cottages.filter(c => c.kind === st.kind), free = all.filter(c => !vTaken(c.id, x.date, st.session));
+        const cur = R.venue(st.venue);
+        if (!cur || cur.kind !== st.kind || (vTaken(cur.id, x.date, st.session) && st.venue !== (preV && preV.id))) st.venue = (free[0] || all[0]).id;
+        $('#evVs').innerHTML = all.length > 1 ? fx.chips('evV', all.map(c => { const t = vTaken(c.id, x.date, st.session); return [c.id, `${esc(c.name)}${t ? ' <small>reserved</small>' : ''}`, t && c.id !== st.venue, t ? 'taken' : '']; }), st.venue, `Which ${esc(st.kind.toLowerCase())}`)
+          : `<input type="hidden" name="evV" value="${all[0].id}">`;
+        paint();
+      };
+      const paint = () => {
+        const x = q(), stay = st.who === 'stay' && R.res($('#evR').value);
+        if (x.price !== lastPrice && !amtTouched) $('#evAmt').value = x.deposit;
+        lastPrice = x.price;
+        $('#evQ').innerHTML = `<div class="nb-sum"><h3>Reservation summary</h3>
+          <p class="nb-sum-top"><b>${esc(x.c.name)}</b><span class="chip ${x.taken ? 'red' : 'green'}">${x.taken ? 'Reserved' : 'Free'}</span></p>
+          <p class="muted">Holds ${x.c.cap}</p>
+          <p>${R.fmt(x.date)}<br><span class="muted">${SESS[st.session]}, ${esc(D.hours[st.session])}. Arriving around ${fx.time12($('#evE').value || TIMES[st.session][0])}</span></p>
+          <div class="nb-lines"><div class="nb-line"><span>${esc(x.c.kind)}</span><span>${R.money(x.c.price)}</span></div>
+            ${x.pk ? `<div class="nb-line"><span>${esc(x.pk.name)}, ${x.pax} × ${R.money(x.pk.price)}</span><span>${R.money(x.pk.price * x.pax)}</span></div>` : ''}</div>
+          <div class="nb-line total"><span>Total</span><b>${R.money(x.price)}</b></div>
+          <div class="nb-line nb-dep ${st.dep ? 'paid' : ''}"><span>${st.dep ? `Deposit by ${esc(st.dep)}` : `${R.S.rules.deposit}% deposit to confirm`}</span><b>${R.money(st.dep ? +$('#evAmt').value || 0 : x.deposit)}</b></div>
+          <p class="small muted" style="margin-top:8px">${stay ? 'Entrance is free for the people on the room booking.' : `Entrance is paid on the day: adult ${R.money(D.entrance[st.session].adult)}, child ${R.money(D.entrance[st.session].child)}.`}</p>
+          <p class="nb-sum-guest">${$('#evN').value.trim() ? `For <b>${esc($('#evN').value.trim())}</b>, ${fx.plural(x.pax, 'guest')}` : `<span class="muted">${fx.plural(x.pax, 'guest')}, no group name yet</span>`}</p></div>`;
+        $('#evOverW').hidden = x.pax <= x.c.cap;
+        $('#evPayW').hidden = !st.dep; $('#evRefW').hidden = st.dep === 'Cash';
+        $('#evGo').disabled = x.taken;
+        $('#evGo').textContent = x.taken ? `${x.c.name} is reserved then` : `Reserve, ${R.money(x.price)}`;
+        return x;
+      };
+      form.addEventListener('input', e => {
+        const id = e.target.id, name = e.target.name;
+        if (id) fx.clearErr(b, id);
+        if (name === 'evKind') { st.kind = e.target.value; $$('.nb-type').forEach(l => l.classList.toggle('on', l.querySelector('input').checked)); paintVenues(); return; }
+        if (name === 'evV') { const kb = document.activeElement === e.target; st.venue = e.target.value; paintVenues(); if (kb) $(`[name=evV][value="${st.venue}"]`).focus(); return; } // redraw: a reserved one left behind can't be picked again
+        if (name === 'evS') { st.session = e.target.value; const t = $('#evE').value; $('#evE').innerHTML = times(st.session); if (TIMES[st.session].includes(t)) $('#evE').value = t; paintKinds(); return; }
+        if (name === 'evK') { st.pkg = e.target.value; paint(); return; }
+        if (name === 'evDep') { st.dep = e.target.value; paint(); if (st.dep) $('#evAmt').focus(); return; }
+        if (name === 'evWho') { st.who = e.target.value; $('#evRW').hidden = st.who !== 'stay'; if (st.who === 'stay') $('#evR').focus(); else { $('#evR').value = ''; } pickStay(); paintKinds(); return; }
+        if (id === 'evR') { pickStay(); paintKinds(); return; }
+        if (id === 'evAmt') amtTouched = true;
+        if (id === 'evD' || id === 'evX') { fx.stepState(b); paintKinds(); return; }
+        paint();
+      });
+      form.addEventListener('change', e => { if (e.target.id === 'evE') paint(); });
+      form.addEventListener('click', e => { fx.step(e, form); });
+      form.addEventListener('submit', e => { e.preventDefault(); go(); });
+      if (pre) pickStay();
+      paintKinds();
+
+      const go = () => {
+        const x = paint(), errs = [], add = (id, m) => errs.push([id, m]);
+        if (x.taken) return;
+        const stay = st.who === 'stay' && R.res($('#evR').value), dep = st.dep, amt = +$('#evAmt').value || 0;
+        if (st.who === 'stay' && !stay) add('evR', 'Pick the staying guest, or choose Day visitors.');
+        if (stay && (x.date < stay.arrive || x.date > R.dep(stay))) add('evD', `Pick a date during the stay: ${R.fmtShort(stay.arrive)} to ${R.fmtShort(R.dep(stay))}.`);
+        if ($('#evN').value.trim().length < 3) add('evN', 'Enter the group name.');
+        if ($('#evP').value.replace(/\D/g, '').length < 7) add('evP', 'Enter a mobile number.');
+        if (x.pax > x.c.cap && $('#evOver').value.trim().length < 5) add('evOver', `${x.pax} guests is more than ${x.c.name} holds (${x.c.cap}). Write why it's OK.`);
+        if (dep && !(amt > 0)) add('evAmt', 'Enter the deposit amount.');
+        if (dep && dep !== 'Cash' && $('#evRef').value.trim().length < 4) add('evRef', 'Enter the payment reference number.');
+        if (!fx.report(b, errs, $('#evErr'))) return;
+        const v = { id: R.nextId('EV'), venue: x.c.id, date: x.date, session: st.session, name: $('#evN').value.trim(), phone: $('#evP').value.trim(), pax: x.pax, catering: x.pk, eta: $('#evE').value || '09:00', notes: $('#evNo').value.trim(), overNote: x.pax > x.c.cap ? $('#evOver').value.trim() : '', resId: stay ? stay.id : '', price: x.price, status: 'booked', payments: [], created: bd() };
         if (dep) v.payments.push({ id: R.nextId('VP'), date: bd(), at: R.now(), amount: amt, method: dep, ref: $('#evRef').value.trim(), or: R.nextOR(), by: R.S.user, shift: R.S.shift.id });
         R.S.venueBookings.push(v);
         if (v.resId) R.log('Cottage reserved', `${x.c.name}, ${R.fmtShort(v.date)} ${SESS[v.session].toLowerCase()}`, v.resId);
         R.log('Cottage reserved', `${x.c.name}, ${R.fmtShort(v.date)} ${SESS[v.session].toLowerCase()} · ${v.name} · ${R.money(v.price)}${dep ? ' · deposit ' + R.peso(amt) : ''}`, v.id);
         R.closeModal(); R.rerender(); R.toast(`${x.c.name} reserved for ${v.name}`);
       };
-    });
+    }, { wide: true, tall: true });
   };
   R.act.openEvent = d => {
     const v = R.S.venueBookings.find(x => x.id === d.id), c = R.venue(v.venue), paid = R.vPaid(v);
