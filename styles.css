@@ -999,3 +999,10 @@ h2 .g-n{vertical-align:2px;margin-left:4px}
 /* the check-in / check-out box inside staff forms */
 .field[data-dp-range] > span{font-size:13px;font-weight:600;color:var(--ink-2)}
 .field .dp-range{margin-top:0}
+
+/* booking page: header, and why a guest can't be checked in yet */
+.bk-head .bk-actions{gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.bk-block{align-items:center;flex-wrap:wrap;gap:10px 12px;margin-bottom:14px;padding:12px 14px}
+.bk-block .grow{display:flex;flex-direction:column;gap:2px;min-width:220px;flex:1}
+.bk-block .row{gap:8px;flex-wrap:wrap}
+@media screen and (max-width:600px){.bk-head .bk-actions{width:100%;justify-content:flex-start;margin-left:0}.bk-block .row{width:100%}.bk-block .row .btn{flex:1;justify-content:center}}

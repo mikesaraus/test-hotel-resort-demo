@@ -32,7 +32,7 @@
     if (!r.room) return [false, 'Assign a room first'];
     const room = R.room(r.room);
     if (room.ooo) return [false, `Room ${r.room} is out of order`];
-    if (room.hk === 'dirty') return [false, `Room ${r.room} is still dirty. Mark it clean in Room status, or give the guest another room on the booking.`];
+    if (room.hk === 'dirty') return [false, `Room ${r.room} is still dirty`];
     return [true, ''];
   }
   R.canCheckIn = canCheckIn;
@@ -72,7 +72,7 @@
     const all = (d.ids ? d.ids.split(',') : [d.id]).map(R.res);
     const r = all[0], [ok, why] = canCheckIn(r);
     if (!R.need('checkin')) return;
-    if (!ok) return R.toast(why, 'warn');
+    if (!ok) return R.toast(why + (R.room(r.room || '') && R.room(r.room).hk === 'dirty' ? '. Mark it clean in Room status, or give the guest another room on the booking.' : ''), 'warn');
     const g = R.guest(r.guestId), t = R.type(r.type), many = all.length > 1;
     R.modal(many ? `Registration card: ${all.length} group rooms` : 'Registration card', `
       <div class="reg-head"><div><b>${esc(g.name)}</b><div class="small muted">${r.id} · ${esc(r.channel)}</div></div><div class="right"><b>Room${many ? 's ' + all.map(x => x.room).join(', ') : ' ' + r.room}</b><div class="small muted">${many ? 'Group leader signs for all rooms' : esc(t.name)}</div></div></div>
@@ -298,7 +298,7 @@
     const st = { show: same ? 'same' : 'all', q: '', to: '', rate: 'keep' };
     const diffOf = x => newRates(x.type).slice(posted).reduce((a, b) => a + b, 0) - restSum;
     const perNight = n => R.money(Math.abs(n) / Math.max(1, r.nights - posted));
-    R.authorize({ perm: 'move', title: `Move from room ${r.room || '—'}`, ok: 'Move room', placeholder: 'e.g. aircon problem, guest asked for pool view',
+    R.authorize({ perm: 'move', title: r.room ? `Move from room ${r.room}` : 'Pick a room', ok: r.room ? 'Move room' : 'Give this room', placeholder: 'e.g. aircon problem, guest asked for pool view',
       body: `<p class="mv-ctx"><b>${esc(g.name)}</b><span>${esc(cur.name)}${r.room ? `, room ${esc(r.room)}` : ''}. ${R.fmt(from)} to ${R.fmt(R.dep(r))}, ${left} night${left === 1 ? '' : 's'} ${r.status === 'inhouse' ? 'left' : ''}</span></p>
         ${free.length ? `<div class="mv-tools">${R.fx.chips('mvShow', [['same', `Same type <small>${same}</small>`, !same], ['all', `All free rooms <small>${free.length}</small>`]], st.show, 'Show')}
           ${free.length > 8 ? `<label class="field mv-find">Find a room<input id="mvQ" type="search" inputmode="search" placeholder="Room number or type" autocomplete="off"></label>` : ''}</div>
@@ -330,7 +330,7 @@
           if (r.status === 'inhouse' && r.room) notes.push(`Room ${esc(r.room)} goes to housekeeping as dirty.`);
           if (x && !ready(x) && r.status === 'inhouse') notes.push(`Room ${esc(x.no)} still needs cleaning, so the guest may have to wait.`);
           $('#mvNote').innerHTML = notes.length ? `<ul class="mv-notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '';
-          $('#azGo').textContent = x ? `Move to room ${x.no}` : 'Move room';
+          $('#azGo').textContent = x ? (r.room ? `Move to room ${x.no}` : `Give room ${x.no}`) : (r.room ? 'Move room' : 'Give this room');
         };
         b.addEventListener('input', e => {
           const n = e.target.name;
@@ -992,7 +992,12 @@
       const open = r.status === 'booked' || r.status === 'inhouse';
       const expected = open ? R.expectedBalance(r) : R.balance(r);
       const main = [];
-      if (r.status === 'booked') main.push(ci ? `<button class="btn" data-act="checkIn" data-id="${r.id}">Check in</button>` : `<span class="small muted">${esc(why)}</span>`);
+      if (r.status === 'booked' && ci) main.push(`<button class="btn sm" data-act="checkIn" data-id="${r.id}">Check in</button>`);
+      // why this guest can't be checked in yet, and the buttons that fix it
+      const rm = r.room && R.room(r.room), early = r.status === 'booked' && r.arrive > day;
+      const block = r.status !== 'booked' || ci || early ? '' : `<div class="note warn bk-block" role="status">${R.icon('alert')}<div class="grow"><b>Can't check in yet: ${esc(why.charAt(0).toLowerCase() + why.slice(1))}.</b>
+          <span>${!r.room ? 'Give the guest a room first.' : rm.ooo ? 'Give the guest another room.' : 'Mark it clean once housekeeping is done, or give the guest another room.'}</span></div>
+          <div class="row">${rm && rm.hk === 'dirty' && !rm.ooo && R.can('hk') ? `<button class="btn sm" data-act="setHk" data-no="${rm.no}" data-hk="clean">Mark room ${esc(rm.no)} clean</button>` : ''}${R.can('move') || R.can('book') ? `<button class="btn sm ghost" data-act="moveRoom" data-id="${r.id}">${r.room ? 'Give another room' : 'Pick a room'}</button>` : ''}</div></div>`;
       if (r.status === 'inhouse') main.push(`<button class="btn" data-act="checkOut" data-id="${r.id}">Check out</button>`);
       const posted = R.lines(r).filter(f => f.kind === 'night').length;
 
@@ -1037,7 +1042,7 @@
       const history = `<div class="panel"><h2>History</h2>${hist.map(a => `<div class="list-item"><span class="small muted num nowrap">${R.fmtShort(a.date)} ${a.at}</span><div class="grow small"><b>${esc(a.action)}</b> ${esc(a.detail)}</div><span class="small muted">${esc(R.staff(a.user).name)}</span></div>`).join('') || '<p class="empty">Changes made in this demo appear here: who did what, and when.</p>'}</div>`;
 
       return `<div class="bk-head"><a class="btn ghost sm" href="#reservations">${R.icon('back')}Reservations</a>
-          <span class="row">${R.chip(r.status)}<span class="chip">${r.id}</span>${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}</span><div class="sp row">${R.can('till') && r.status === 'inhouse' ? `<button class="btn ghost sm" data-act="useCottage" data-id="${r.id}">Use a cottage</button>` : ''}${R.can('till') && open ? `<button class="btn ghost sm" data-act="newEvent" data-res="${r.id}">Reserve a cottage</button>` : ''}${R.can('book') ? `<button class="btn ghost sm" data-act="msgGuest" data-id="${r.id}">Message guest</button>` : ''}${main.join('')}</div></div>
+          <span class="row bk-chips">${R.chip(r.status)}<span class="chip">${r.id}</span>${early ? `<span class="chip">Arrives ${R.fmt(r.arrive)}</span>` : ''}${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}</span><div class="sp row bk-actions">${R.can('till') && r.status === 'inhouse' ? `<button class="btn ghost sm" data-act="useCottage" data-id="${r.id}">Use a cottage</button>` : ''}${R.can('till') && open ? `<button class="btn ghost sm" data-act="newEvent" data-res="${r.id}">Reserve a cottage</button>` : ''}${R.can('book') ? `<button class="btn ghost sm" data-act="msgGuest" data-id="${r.id}">Message guest</button>` : ''}${main.join('')}</div></div>${block}
         <div class="pulse pulse5">
           <div><b>${R.fmtShort(r.arrive)} → ${R.fmtShort(R.dep(r))}</b><span>${r.nights} night${r.nights > 1 ? 's' : ''}</span></div>
           <div><b>${r.room || '—'}</b><span>${esc(t.name)}</span></div>
