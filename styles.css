@@ -987,3 +987,15 @@ h2 .g-n{vertical-align:2px;margin-left:4px}
   .rs-tbl tr.rs-day{display:block}
   .rs-tbl tr.rs-day th{display:block}
 }
+
+/* Change dates */
+.ed .mv-ctx{margin-bottom:12px}
+.ed .note{margin-bottom:12px}
+.ed-dates{margin-bottom:12px}
+.ed-sum{background:var(--bg);border-radius:var(--r-m);padding:10px 14px;font-size:14px}
+.ed-up b{color:var(--lagoon)}
+.ed-down b{color:var(--palm)}
+.ed-room{margin-top:10px}
+/* the check-in / check-out box inside staff forms */
+.field[data-dp-range] > span{font-size:13px;font-weight:600;color:var(--ink-2)}
+.field .dp-range{margin-top:0}

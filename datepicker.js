@@ -12,6 +12,7 @@
   const addMonths = (s, n) => { const d = parse(monthStart(s)); d.setMonth(d.getMonth() + n); return iso(d); };
   const valid = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
   const nightsOf = (a, b) => Math.round((parse(b) - parse(a)) / 864e5);
+  const spanText = (c, a, b) => { const n = nightsOf(a, b) + (c.days ? 1 : 0), u = c.days ? 'day' : 'night'; return `${n} ${u}${n === 1 ? '' : 's'}`; };
   const today = () => (window.R && R.S && R.S.bd) || iso(new Date()); // the PMS business date when there is one
   const fmt = (s, o) => parse(s).toLocaleDateString('en-PH', o);
   const short = s => fmt(s, { weekday: 'short', day: 'numeric', month: 'short', ...(s.slice(0, 4) !== today().slice(0, 4) ? { year: 'numeric' } : {}) });
@@ -47,7 +48,9 @@
     t.addEventListener('click', () => toggle(c, 0));
   }
   function setupRange(a, b, box) {
-    const c = { range: true, inputs: [a, b], label: labelOf(a) };
+    // data-dp-range="days": an inclusive span (a season from the 1st to the 3rd is 3 days, and can start and end on one day);
+    // otherwise a stay, counted in nights, where the second date must be after the first
+    const c = { range: true, days: box.dataset.dpRange === 'days', inputs: [a, b], label: labelOf(a) };
     const wrap = document.createElement('div');
     wrap.className = 'dp-range';
     wrap.innerHTML = [0, 1].map(i => `<button type="button" class="dp-half" data-i="${i}" data-for="${esc(c.inputs[i].id)}" aria-haspopup="dialog" aria-expanded="false"><small>${esc(labelOf(c.inputs[i]))}${i ? '<span class="dp-nights" aria-hidden="true"></span>' : ''}</small><b></b></button>`).join('');
@@ -89,14 +92,14 @@
     t.setAttribute('aria-label', `${c.label}: ${valid(v) ? long(v) : 'no date picked'}. Change date`);
   }
   function paintRange(c) {
-    const [a, b] = c.inputs.map(i => i.value), n = valid(a) && valid(b) ? nightsOf(a, b) : 0;
+    const [a, b] = c.inputs.map(i => i.value), n = valid(a) && valid(b) && b >= a ? nightsOf(a, b) + (c.days ? 1 : 0) : 0, unit = c.days ? 'day' : 'night';
     c.inputs.forEach((input, i) => {
       const t = c.triggers[i], v = input.value;
       mirror(input, t);
       t.querySelector('b').textContent = valid(v) ? short(v) : 'Add date';
-      t.setAttribute('aria-label', `${labelOf(input)}: ${valid(v) ? long(v) : 'no date picked'}${i && n > 0 ? `, ${n} night${n === 1 ? '' : 's'}` : ''}. Change dates`);
+      t.setAttribute('aria-label', `${labelOf(input)}: ${valid(v) ? long(v) : 'no date picked'}${i && n > 0 ? `, ${n} ${unit}${n === 1 ? '' : 's'}` : ''}. Change dates`);
     });
-    c.wrap.querySelector('.dp-nights').textContent = n > 0 ? `${n} night${n === 1 ? '' : 's'}` : '';
+    c.wrap.querySelector('.dp-nights').textContent = n > 0 ? `${n} ${unit}${n === 1 ? '' : 's'}` : '';
     c.wrap.classList.toggle('dp-err', c.triggers.some(t => t.getAttribute('aria-invalid') === 'true'));
   }
 
@@ -144,7 +147,7 @@
   function allowed(d, inf) {
     const c = P.c, lo = minOf(c), hi = maxOf(c);
     if (lo && d < lo || hi && d > hi) return false;
-    if (c.range && P.i === 1 && P.a && d > P.a) return true;  // a check-out day only needs the nights before it
+    if (c.range && P.i === 1 && P.a && (d > P.a || (c.days && d === P.a))) return true;  // a check-out day only needs the nights before it
     return !(inf && inf.full);
   }
 
@@ -160,7 +163,7 @@
       <div class="dp-titles" aria-live="polite">${P.view === 'days' ? Array.from({ length: months }, (_, k) => `<button type="button" class="dp-title" data-dp="months" aria-label="${monthName(addMonths(P.month, k))}, choose another month">${monthName(addMonths(P.month, k))}</button>`).join('') : `<span class="dp-title">${P.month.slice(0, 4)}</span>`}</div>
       <button type="button" class="dp-nav" data-dp="next" aria-label="${P.view === 'days' ? 'Next month' : 'Next year'}" ${canNext ? '' : 'disabled'}>${ICO.next}</button>
       ${wide() ? '' : `<button type="button" class="dp-nav dp-x" data-dp="close" aria-label="Close">${ICO.x}</button>`}</div>`;
-    const status = c.range ? `<p class="dp-status">${P.i === 0 ? `Pick your <b>${esc(labelOf(c.inputs[0]).toLowerCase())}</b> date` : P.a ? `<b>${esc(short(P.a))}</b> to <b>${P.b && P.b > P.a ? esc(short(P.b)) : '…'}</b>${P.b && P.b > P.a ? ` · ${nightsOf(P.a, P.b)} night${nightsOf(P.a, P.b) === 1 ? '' : 's'}` : `. Now pick your <b>${esc(labelOf(c.inputs[1]).toLowerCase())}</b> date`}` : ''}</p>` : '';
+    const status = c.range ? `<p class="dp-status">${P.i === 0 ? `Pick your <b>${esc(labelOf(c.inputs[0]).toLowerCase())}</b> date` : P.a ? `<b>${esc(short(P.a))}</b> to <b>${P.b && (P.b > P.a || (c.days && P.b === P.a)) ? esc(short(P.b)) : '…'}</b>${P.b && (P.b > P.a || (c.days && P.b === P.a)) ? ` · ${spanText(c, P.a, P.b)}` : `. Now pick your <b>${esc(labelOf(c.inputs[1]).toLowerCase())}</b> date`}` : ''}</p>` : '';
     const body = P.view === 'days' ? `<div class="dp-months">${Array.from({ length: months }, (_, k) => grid(addMonths(P.month, k))).join('')}</div>` : monthsGrid();
     const inf = info(c);
     const foot = P.view === 'days' ? `<div class="dp-foot">${quick().map(([l, a, b]) => `<button type="button" class="dp-chip" data-dp="quick" data-a="${a}" data-b="${b || ''}">${esc(l)}</button>`).join('')}${inf && inf.legend ? `<p class="dp-legend">${inf.legend()}</p>` : ''}</div>` : '';
@@ -191,6 +194,7 @@
   function quick() {
     const c = P.c, t = today(), out = [];
     const fits = (a, b) => allowed(a, info(c) ? info(c)(a) : null) && (!maxOf(c) || (b || a) <= maxOf(c));
+    if (c.range && c.days) return out; // seasons: no stay shortcuts
     if (c.range) {
       const wd = parse(t).getDay();
       const fri = wd === 6 ? t : add(t, (5 - wd + 7) % 7);         // Saturday: this weekend starts today
@@ -221,7 +225,7 @@
   function pick(d) {
     const c = P.c;
     if (!c.range) return commit([d]);
-    if (P.i === 0 || !P.a || d <= P.a) {
+    if (P.i === 0 || !P.a || d < P.a || (d === P.a && !c.days)) {
       if (!allowed(d, info(c) ? info(c)(d) : null) && P.i === 1) return;
       P.a = d; P.i = 1; P.focus = add(d, 1); P.hover = '';
       if (P.b && P.b <= P.a) P.b = '';

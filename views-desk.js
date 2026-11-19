@@ -364,29 +364,59 @@
       R.rerender(); R.toast('Rate changed');
     });
   };
+  // change the dates of a booking that hasn't checked in: one calendar showing how many rooms of its type are free each night,
+  // then what changes (dates, price, room); if its room is taken on the new dates, pick another or leave it unassigned
   R.act.editDates = d => {
     const r = R.res(d.id);
     if (!R.need('book')) return;
-    R.modal('Change dates', `<div class="form">
-      <label class="field">Arrival<input id="edA" type="date" value="${r.arrive}" min="${bd()}"></label>
-      <label class="field">Nights<input id="edN" type="number" min="1" max="30" value="${r.nights}"></label>
-      <div class="full" id="edQ"></div></div>
-      <div class="foot"><button class="btn ghost" data-act="closeModal">Back</button><button class="btn" id="edGo">Save new dates</button></div>`, b => {
-      const $ = s => b.querySelector(s);
+    const g = R.guest(r.guestId), t = R.type(r.type), before = R.stayValue(r), nPl = n => `${n} night${n === 1 ? '' : 's'}`;
+    if (window.DP) {
+      DP.info.edFree = day => { const n = R.typeAvail(r.type, day, 1, r.id); return n ? { text: `${n} free`, tone: n <= 1 ? 'few' : '', note: `${n} ${t.name} free` } : { text: 'Full', full: true, note: `no ${t.name} free` }; };
+      DP.info.edFree.legend = () => `${esc(t.name)} rooms free each night, not counting this booking. <i style="background:#8A5F1C"></i>1 left <i style="background:var(--hibiscus)"></i>Full`;
+    }
+    R.modal('Change dates', `<form class="ed" id="edForm" novalidate>
+      <p class="mv-ctx"><b>${esc(g.name)}</b><span>${esc(t.name)}${r.room ? `, room ${esc(r.room)}` : ''}. Now ${R.fmt(r.arrive)} to ${R.fmt(R.dep(r))}, ${nPl(r.nights)}.</span></p>
+      ${r.moved ? `<p class="note warn">${R.icon('alert')}<span>These dates were already changed ${r.moved === 1 ? 'once' : r.moved + ' times'}. House rule: ${esc(R.S.rules.cancellation)}</span></p>` : ''}
+      <div class="field ed-dates" data-dp-range><span>New dates</span>
+        <input type="date" id="edA" data-dp-label="Arrival" data-dp-info="edFree" min="${bd()}" value="${r.arrive}">
+        <input type="date" id="edOut" data-dp-label="Departure" min="${addDays(bd(), 1)}" value="${R.dep(r)}"></div>
+      <div id="edQ" aria-live="polite"></div></form>
+      <div class="foot"><button type="button" class="btn ghost" data-act="closeModal">Back</button><button type="submit" form="edForm" class="btn" id="edGo">Save new dates</button></div>`, b => {
+      const $ = s => b.querySelector(s), form = $('#edForm');
+      let pickRoom = null;
       const q = () => {
-        const a = $('#edA').value, n = +$('#edN').value || 1, left = R.typeAvail(r.type, a, n, r.id), rates = R.quote(r.type, a, n);
-        $('#edQ').innerHTML = `<div class="note">${left ? `${left} ${esc(R.type(r.type).name)} free · new price ${R.money(rates.reduce((x, y) => x + y, 0))}` : 'Sold out for these dates'}${r.room && !R.roomFree(r.room, a, n, r.id) ? `<br>Room ${r.room} is taken then, so the room will be unassigned.` : ''}</div>`;
-        $('#edGo').disabled = !left;
-        return { a, n, rates };
+        const a = $('#edA').value;
+        if (!($('#edOut').value > a)) $('#edOut').value = addDays(a, 1);
+        const n = Math.min(30, Math.max(1, daysBetween(a, $('#edOut').value))), left = R.typeAvail(r.type, a, n, r.id), rates = R.quote(r.type, a, n), after = rates.reduce((x, y) => x + y, 0);
+        const same = a === r.arrive && n === r.nights, keepRoom = !r.room || R.roomFree(r.room, a, n, r.id);
+        const free = keepRoom ? [] : R.freeRooms(r.type, a, n, r.id).map(x => x.no);
+        if (!keepRoom && (pickRoom === null || (pickRoom && !free.includes(pickRoom)))) pickRoom = (R.bestRoom(r.type, a, n) || {}).no || '';
+        return { a, n, left, rates, after, same, keepRoom, free };
       };
-      b.querySelectorAll('input').forEach(i => i.addEventListener('input', q)); q();
-      $('#edGo').onclick = () => {
-        const { a, n, rates } = q(), old = `${R.fmtShort(r.arrive)}, ${r.nights}n`;
-        if (r.room && !R.roomFree(r.room, a, n, r.id)) r.room = null;
-        Object.assign(r, { arrive: a, nights: n, rates });
-        R.log('Dates changed', `${old} → ${R.fmtShort(a)}, ${n}n`, r.id);
-        R.closeModal(); R.rerender(); R.toast('Dates changed');
+      const paint = () => {
+        const x = q(), dlt = x.after - before;
+        $('#edQ').innerHTML = !x.left ? `<p class="note warn">${R.icon('alert')}<span>No ${esc(t.name)} is free for all of these nights. Pick other dates.</span></p>`
+          : `<div class="ed-sum"><div class="nb-line"><span>Dates</span><b>${R.fmtShort(x.a)} to ${R.fmtShort(addDays(x.a, x.n))}, ${nPl(x.n)}</b></div>
+            <div class="nb-line"><span>Room price</span><b>${R.money(x.after)}</b></div>
+            <div class="nb-line ${dlt > 0 ? 'ed-up' : dlt < 0 ? 'ed-down' : ''}"><span>Compared with now</span><b>${x.same ? 'No change' : dlt ? `${dlt > 0 ? '+' : '−'}${R.money(Math.abs(dlt))}` : 'Same price'}</b></div>
+            ${R.paid(r) ? `<div class="nb-line"><span>Paid so far</span><span>${R.money(R.paid(r))}</span></div>` : ''}</div>
+            ${!r.room ? '<p class="small muted ed-room">No room assigned yet. One is picked at check-in, or on the booking.</p>'
+              : x.keepRoom ? `<p class="small muted ed-room">Room ${esc(r.room)} is free on these dates, so the guest keeps it.</p>`
+              : `<p class="ed-room"><b>Room ${esc(r.room)} is taken on these dates.</b></p>${R.fx.chips('edRoom', [...x.free.map(no => { const rm = R.room(no); return [no, `Room ${esc(no)}${rm.hk === 'dirty' && x.a === bd() ? ' <small>needs cleaning</small>' : ''}`]; }), ['', 'Leave unassigned']], pickRoom, `Move to`)}`}`;
+        $('#edGo').disabled = !x.left || x.same;
+        $('#edGo').textContent = x.same ? 'Pick new dates' : 'Save new dates';
       };
+      form.addEventListener('input', e => { if (e.target.name === 'edRoom') { pickRoom = e.target.value; return; } paint(); });
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const x = q(); if (!x.left || x.same) return;
+        const old = `${R.fmtShort(r.arrive)}, ${r.nights}n`, oldRoom = r.room;
+        if (!x.keepRoom) r.room = pickRoom || null;
+        Object.assign(r, { arrive: x.a, nights: x.n, rates: x.rates, moved: (r.moved || 0) + 1 });
+        R.log('Dates changed', `${old} → ${R.fmtShort(x.a)}, ${x.n}n · ${R.money(x.after)}${!x.keepRoom ? ` · room ${oldRoom} → ${r.room || 'unassigned'}` : ''}`, r.id);
+        R.closeModal(); R.rerender(); R.toast(`Dates changed${!x.keepRoom ? r.room ? `, now room ${r.room}` : ', room unassigned' : ''}`);
+      });
+      paint();
     });
   };
   R.act.cancelRes = d => {
@@ -760,15 +790,14 @@
   // ---------- quick price quote to paste into Messenger / SMS ----------
   R.act.quoteMsg = () => {
     R.modal('Quote for Messenger', `<div class="form">
-      <label class="field">Arrival<input id="qmA" type="date" min="${bd()}" value="${avStart || bd()}"></label>
-      <label class="field">Nights<input id="qmN" type="number" min="1" max="30" value="1"></label>
+      <div class="field full" data-dp-range><span>Dates</span><input id="qmA" type="date" data-dp-label="Arrival" min="${bd()}" value="${avStart || bd()}"><input id="qmOut" type="date" data-dp-label="Departure" min="${addDays(bd(), 1)}" value="${addDays(avStart || bd(), 1)}"></div>
       <label class="field">Adults<input id="qmP" type="number" min="1" value="2"></label>
       <label class="field">Children<input id="qmC" type="number" min="0" value="0"></label>
       <label class="field full">Message<textarea id="qmT" rows="11"></textarea></label></div>
       <div class="foot"><button class="btn ghost" data-act="closeModal">Close</button><button class="btn" id="qmCopy">Copy message</button></div>`, b => {
       const $ = s => b.querySelector(s);
       const upd = () => {
-        const a = $('#qmA').value, n = Math.max(1, +$('#qmN').value || 1), ppl = (+$('#qmP').value || 0) + (+$('#qmC').value || 0);
+        const a = $('#qmA').value, n = Math.max(1, Math.min(30, daysBetween(a, $('#qmOut').value) || 1)), ppl = (+$('#qmP').value || 0) + (+$('#qmC').value || 0);
         const opts = R.S.roomTypes.filter(t => R.typeAvail(t.id, a, n) > 0).map(t => {
           const rooms = Math.ceil(ppl / t.cap), left = R.typeAvail(t.id, a, n), tot = R.quote(t.id, a, n).reduce((x, y) => x + y, 0) * rooms;
           return rooms <= left ? `• ${rooms > 1 ? rooms + ' × ' : ''}${t.name} (sleeps ${t.cap}, ${t.bed}): ₱${tot.toLocaleString('en-PH')} for ${n} night${n > 1 ? 's' : ''}` : '';
@@ -790,8 +819,7 @@
         <datalist id="ggGuests">${R.S.guests.map(g => `<option value="${esc(g.name)} — ${g.id}">${esc(g.phone)}</option>`).join('')}</datalist></label>
       <label class="field" id="ggPhW">Leader's mobile (new guest)<input id="ggPh" placeholder="+63 9xx xxx xxxx"></label>
       <label class="field">Booked through<select id="ggCh">${R.S.sources.map(c => `<option>${c.name}</option>`).join('')}</select></label>
-      <label class="field">Arrival<input id="ggA" type="date" min="${bd()}" value="${addDays(bd(), 7)}"></label>
-      <label class="field">Nights<input id="ggNt" type="number" min="1" max="30" value="2"></label>
+      <div class="field full" data-dp-range><span>Dates</span><input id="ggA" type="date" data-dp-label="Arrival" min="${bd()}" value="${addDays(bd(), 7)}"><input id="ggOut" type="date" data-dp-label="Departure" min="${addDays(bd(), 1)}" value="${addDays(bd(), 9)}"></div>
       <div class="full"><span class="field">Rooms</span><div id="ggRooms" class="grp-rooms"></div></div>
       <label class="field">Bill<select id="ggBill"><option value="master">One bill: the leader pays for all rooms</option><option value="individual">Separate bills: each room pays its own</option></select></label>
       <label class="field">Deposit received<select id="ggDep"><option value="">Not yet</option>${['GCash', 'Cash', 'Bank transfer', 'Card'].map(m => `<option>${m}</option>`).join('')}</select></label>
@@ -804,7 +832,7 @@
       const counts = {};
       const lead = () => { const m = $('#ggLead').value.match(/ — (G\d+)$/); return m ? R.findGuest(m[1]) : null; };
       const draw = () => {
-        const a = $('#ggA').value, n = Math.max(1, +$('#ggNt').value || 1);
+        const a = $('#ggA').value; if (!($('#ggOut').value > a)) $('#ggOut').value = addDays(a, 1); const n = Math.max(1, Math.min(30, daysBetween(a, $('#ggOut').value)));
         $('#ggPhW').style.display = lead() ? 'none' : '';
         $('#ggRooms').innerHTML = R.S.roomTypes.map(t => { const left = R.typeAvail(t.id, a, n); counts[t.id] = Math.min(counts[t.id] || 0, left); return `<div class="mini-step"><span style="min-width:150px">${esc(t.name)} <small class="muted">${left} free · sleeps ${t.cap}</small></span><button class="btn sm ghost" data-gg="${t.id}" data-n="-1" ${counts[t.id] ? '' : 'disabled'} aria-label="One less ${esc(t.name)}">−</button><b>${counts[t.id]}</b><button class="btn sm ghost" data-gg="${t.id}" data-n="1" ${counts[t.id] < left ? '' : 'disabled'} aria-label="One more ${esc(t.name)}">+</button></div>`; }).join('');
         const rooms = Object.values(counts).reduce((x, y) => x + y, 0);
