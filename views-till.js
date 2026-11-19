@@ -251,7 +251,7 @@
         return `<div class="pax-card ${T.pax[k] ? 'has' : ''}"><div class="pax-info"><b>${l}</b><small>${sub}</small><span class="pax-price num">${price ? R.money(price) : 'Free'}${k === 'senior' ? ' <small>less 20%</small>' : ''}</span></div>
           <div class="stepper"><button data-act="fdPax" data-k="${k}" data-n="-1" aria-label="One less ${l}" ${T.pax[k] ? '' : 'disabled'}>−</button><output aria-live="polite">${T.pax[k]}</output><button data-act="fdPax" data-k="${k}" data-n="1" aria-label="One more ${l}">+</button></div></div>`;
       }).join('')}</div>`;
-      const cottages = `<div class="cot-row">${D.cottages.map(x => {
+      const cottages = `<p class="cot-key" aria-hidden="true"><span><i style="background:#3D7348"></i>Free</span><span><i style="background:#2C5634;box-shadow:inset 0 0 0 2px #DDEBDD"></i>On this sale</span><span><i style="background:#B58539"></i>Reserved</span><span><i style="background:#7A1F24"></i>In use</span></p><div class="cot-row">${D.cottages.map(x => {
         const s = used[x.id] && saleOf(used[x.id]), picked = T.cottages.includes(x.id), vb = !s && !picked && R.venueToday(x.id, T.session);
         const state = s ? 'taken' : picked ? 'picked' : vb ? 'reserved' : 'free';
         const label = s ? `${s.calc.heads} pax · since ${s.at}` : picked ? 'On this sale' : vb ? `Reserved · ${vb.eta}` : `Free · ${x.cap} pax`;
