@@ -7,30 +7,44 @@
   const attendants = () => R.S.staff.filter(s => s.roleKey === 'housekeeping');
 
   // ---------- room dialog ----------
+  // leads with what the desk needs: is it ready, who is in it, who is next; then cleaning as one Dirty → Cleaned → Inspected control
   R.act.openRoom = d => R.openRoom(d.no);
   R.openRoom = function (no) {
     const room = R.room(no), t = R.type(room.type), ih = R.inhouseIn(no), na = nextArrival(no), st = R.roomState(room);
     const tk = R.S.tasks.filter(x => x.area === no && x.status !== 'done');
-    const btn = (hk, label, perm, primary) => R.can(perm) ? `<button class="btn ${primary ? '' : 'ghost'}" data-act="setHk" data-no="${no}" data-hk="${hk}" ${room.hk === hk ? 'disabled' : ''}>${label}</button>` : '';
-    R.modal(`Room ${no}`, `
-      <div class="row" style="margin-bottom:12px"><span class="chip ${st.occ ? 'ink' : ''}">${st.occ ? 'Occupied' : 'Vacant'}</span>${room.ooo ? R.chip('ooo') : R.chip(room.hk)}<span class="chip">${st.code}</span></div>
-      <dl class="kv">
-        <dt>Type</dt><dd>${esc(t.name)} · ${t.size} · ${esc(t.bed)} · sleeps ${t.cap}</dd>
-        <dt>Price tonight</dt><dd>${R.money(R.priceOn(room.type, bd()))}${R.seasonOn(bd()) ? ' · ' + esc(R.seasonOn(bd()).name) : ''}</dd>
-        <dt>Guest now</dt><dd>${ih ? `<a href="#" data-act="openRes" data-id="${ih.id}">${esc(R.guest(ih.guestId).name)}</a> until ${R.fmt(R.dep(ih))}` : '—'}</dd>
-        <dt>Next arrival</dt><dd>${na ? `<a href="#" data-act="openRes" data-id="${na.id}">${esc(R.guest(na.guestId).name)}</a> on ${R.fmt(na.arrive)}` : 'None booked'}</dd>
-        <dt>Attendant</dt><dd>${R.can('inspect') ? `<select id="rmAtt" aria-label="Attendant"><option value="">Unassigned</option>${attendants().map(s => `<option value="${s.id}" ${room.attendant === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>` : esc(R.staff(room.attendant).name)}</dd>
-        ${room.ooo ? `<dt>Out of order</dt><dd>${esc(room.ooo.reason)} · until ${R.fmt(room.ooo.until)}</dd>` : ''}
-        ${tk.length ? `<dt>Open tasks</dt><dd>${tk.map(x => esc(x.text)).join(', ')}</dd>` : ''}
-      </dl>
-      <div class="foot" style="flex-wrap:wrap">
-        ${R.can('task') ? `<button class="btn ghost" data-act="newTask" data-area="${no}">Report a problem</button>` : ''}
-        ${room.ooo ? (R.can('ooo') ? `<button class="btn" data-act="backInService" data-no="${no}">Back in service</button>` : '') : `
-          ${R.can('ooo') && !st.occ ? `<button class="btn ghost warn-text" data-act="takeOOO" data-no="${no}">Out of order</button>` : ''}
-          ${btn('dirty', 'Mark dirty', 'hk')}${btn('clean', 'Cleaned', 'hk', !R.can('inspect'))}${btn('inspected', 'Inspected', 'inspect', true)}`}
+    const zone = (R.S.zones.find(z => z.id === room.zone) || {}).name || '';
+    const today = na && na.arrive <= bd(), ready = !room.ooo && (room.hk === 'inspected' || room.hk === 'clean');
+    const season = R.seasonOn(bd());
+    // one sentence on the state of the room, and what it needs next
+    const say = room.ooo ? ['bad', `Out of order until ${R.fmt(room.ooo.until)}: ${esc(room.ooo.reason)}.`]
+      : ih ? [room.hk === 'dirty' ? 'warn' : 'ok', `${esc(R.guest(ih.guestId).name)} is staying until ${R.fmt(R.dep(ih))}.${room.hk === 'dirty' ? ' Room needs its daily clean.' : ''}`]
+      : today ? (ready ? ['ok', `Ready for ${esc(R.guest(na.guestId).name)}, arriving today.`] : ['warn', `${esc(R.guest(na.guestId).name)} arrives today and the room still needs cleaning.`])
+      : room.hk === 'dirty' ? ['warn', 'Vacant and needs cleaning before it can be sold.'] : room.hk === 'clean' ? ['ok', 'Vacant and cleaned. Waiting for inspection.'] : ['ok', 'Vacant and inspected: ready to sell.'];
+    const steps = [['dirty', 'Dirty', 'hk'], ['clean', 'Cleaned', 'hk'], ['inspected', 'Inspected', 'inspect']];
+    const canHk = R.can('hk') || R.can('inspect');
+    R.modal(`Room ${no}`, `<div class="rm">
+      <p class="rm-sub">${esc(t.name)}${zone ? `, ${esc(zone)}` : ''} <span class="chip">${st.code}</span></p>
+      <div class="note ${say[0] === 'bad' ? 'warn rm-bad' : say[0] === 'warn' ? 'warn' : 'rm-ok'} rm-state">${R.icon(say[0] === 'ok' ? 'check' : 'alert')}<span>${say[1]}</span></div>
+      <div class="rm-grid">
+        <section><h3>Guests</h3><dl class="kv kv-side">
+          <dt>Now</dt><dd>${ih ? `<a href="#" data-act="openRes" data-id="${ih.id}">${esc(R.guest(ih.guestId).name)}</a>, until ${R.fmtShort(R.dep(ih))}` : '<span class="muted">Nobody</span>'}</dd>
+          <dt>Next</dt><dd>${na ? `<a href="#" data-act="openRes" data-id="${na.id}">${esc(R.guest(na.guestId).name)}</a>, ${today ? '<b>today</b>' : R.fmt(na.arrive)}` : '<span class="muted">None booked</span>'}</dd></dl></section>
+        <section><h3>Room</h3><dl class="kv kv-side">
+          <dt>Price tonight</dt><dd>${R.money(R.priceOn(room.type, bd()))}${season ? ` <span class="muted">${esc(season.name)}</span>` : ''}</dd>
+          <dt>Sleeps</dt><dd>${t.cap}, ${esc(t.bed)}, ${t.size}</dd></dl></section>
+      </div>
+      ${room.ooo ? '' : `<section class="rm-hk"><h3>Housekeeping</h3>
+        ${canHk ? `<div class="rm-steps" role="group" aria-label="Cleaning status">${steps.map(([k, l, perm], i) => { const on = room.hk === k, past = steps.findIndex(s => s[0] === room.hk) > i, can = R.can(perm) && !on;
+          return `<button type="button" class="rm-step ${on ? 'on' : ''} ${past ? 'past' : ''}" ${can ? `data-act="setHk" data-no="${no}" data-hk="${k}"` : 'disabled'} aria-pressed="${on}">${past ? R.icon('check') : ''}${l}</button>`; }).join('')}</div>` : `<p>${R.chip(room.hk)}</p>`}
+        <label class="field rm-att"><span>Attendant</span>${R.can('inspect') ? `<select id="rmAtt"><option value="">Unassigned</option>${attendants().map(s => `<option value="${s.id}" ${room.attendant === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>` : `<b>${esc(R.staff(room.attendant).name || 'Unassigned')}</b>`}</label></section>`}
+      ${tk.length ? `<section><h3>Open problems <span class="g-n">${tk.length}</span></h3>${tk.map(x => `<button type="button" class="list-item rm-task" data-act="openTask" data-id="${x.id}"><span class="grow"><b>${esc(x.text)}</b><span class="small muted">${esc(x.dept)}, ${R.chipLabel(x.status).toLowerCase()} since ${R.fmtShort(x.since || x.created)}</span></span><span class="chip ${x.priority === 'urgent' || x.priority === 'high' ? 'red' : ''}">${esc(x.priority)}</span></button>`).join('')}</section>` : ''}
+      </div>
+      <div class="foot">
+        ${R.can('task') ? `<button class="btn ghost" data-act="newTask" data-area="${no}">${R.icon('alert')}Report a problem</button>` : ''}
+        ${room.ooo ? (R.can('ooo') ? `<button class="btn" data-act="backInService" data-no="${no}">Back in service</button>` : '') : R.can('ooo') && !st.occ ? `<button class="btn ghost warn-text" data-act="takeOOO" data-no="${no}">Out of order</button>` : ''}
       </div>`, b => {
       const a = b.querySelector('#rmAtt');
-      if (a) a.addEventListener('change', () => { room.attendant = a.value || null; R.log('Attendant', `Room ${no} → ${R.staff(room.attendant).name}`); R.save(); R.toast(`Room ${no} given to ${R.staff(room.attendant).name}`); R.render(); });
+      if (a) a.addEventListener('change', () => { room.attendant = a.value || null; R.log('Attendant', `Room ${no} → ${R.staff(room.attendant).name}`); R.save(); R.toast(`Room ${no} given to ${R.staff(room.attendant).name || 'nobody'}`); R.render(); });
     });
   };
   R.act.setHk = d => {
@@ -173,32 +187,73 @@
   };
   R.tasksNeedingAttention = () => R.S.tasks.filter(t => t.status !== 'done' && R.taskFlag(t) && R.taskFlag(t)[0] === 'red');
 
+  // report a problem / guest request: what kind, where, what (one-tap common problems), how urgent; who gets it follows from the kind
+  const COMMON = {
+    repair: ['Aircon not cooling', 'No hot water', 'Leaking tap or toilet', 'Clogged drain', 'Lights or power out', 'TV or Wi-Fi not working', 'Door lock or key card', 'Broken furniture'],
+    request: ['Extra towels', 'Extra pillows or blanket', 'Extra bed or crib', 'Toiletries refill', 'Clean the room now', 'Drinking water']
+  };
+  const PRIOS = [['low', 'Low', 'when there is time'], ['medium', 'Medium', 'today'], ['high', 'High', 'within the hour'], ['urgent', 'Urgent', 'a guest is affected now']];
   R.act.newTask = d => {
     if (!R.need('task')) return;
-    const areas = [...R.S.zones.filter(z => z.kind === 'feature').map(z => z.name), 'Lobby', 'Restaurant', ...R.S.dayuse.cottages.map(c => c.name), ...R.S.rooms.map(r => r.no)].filter((v, i, a) => a.indexOf(v) === i);
-    R.modal('New task', `<div class="form">
-      <label class="field">Type<select id="tkKind"><option value="repair">Repair</option><option value="request">Guest request</option></select></label>
-      <label class="field">Room or area<select id="tkArea">${areas.map(x => `<option ${x === d.area ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
-      <label class="field">Team<select id="tkDept">${TEAMS.map(x => `<option>${x}</option>`).join('')}</select></label>
-      <label class="field">Priority<select id="tkPr"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label>
-      <label class="field full">What's needed?<input id="tkText" placeholder="e.g. aircon not cooling, extra pillows" autofocus></label>
-      ${R.can('ooo') ? '<label class="full check"><input type="checkbox" id="tkBlock"> Take this room out of order until it is fixed</label>' : ''}</div>
-      <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="tkGo">Create task</button></div>`, b => {
-      const $ = s => b.querySelector(s);
-      $('#tkKind').addEventListener('change', () => { $('#tkDept').value = $('#tkKind').value === 'repair' ? 'Maintenance' : 'Housekeeping'; });
-      $('#tkGo').onclick = () => {
-        const text = $('#tkText').value.trim(), area = $('#tkArea').value;
-        if (text.length < 3) return R.toast('Describe what is needed', 'warn');
-        const block = $('#tkBlock') && $('#tkBlock').checked && !!R.room(area);
-        if (block && R.inhouseIn(area)) return R.toast('A guest is in this room. Move them before taking it out of order.', 'warn');
+    const rooms = R.S.rooms.map(r => r.no), cots = R.S.dayuse.cottages.map(c => c.name), common = [...R.S.zones.filter(z => z.kind === 'feature').map(z => z.name), 'Lobby', 'Restaurant'].filter((v, i, a) => a.indexOf(v) === i);
+    const group = (label, list) => `<optgroup label="${label}">${list.map(x => `<option value="${esc(x)}" ${x === d.area ? 'selected' : ''}>${label === 'Rooms' ? 'Room ' : ''}${esc(x)}</option>`).join('')}</optgroup>`;
+    const st = { kind: 'repair', prio: 'medium' };
+    R.modal(d.area && R.room(d.area) ? `Report a problem in room ${d.area}` : 'Report a problem', `<form class="nb tk" id="tkForm" novalidate><div class="nb-main">
+      ${R.fx.chips('tkKindC', [['repair', 'Something is broken'], ['request', 'Guest request']], st.kind, 'What is it?')}
+      <div class="form"><label class="field">Where<select id="tkArea">${d.area ? '' : '<option value="">Choose a room or area</option>'}${group('Rooms', rooms)}${group('Cottages', cots)}${group('Common areas', common)}</select></label>
+        <label class="field">Send to<select id="tkDept">${TEAMS.map(x => `<option ${x === 'Maintenance' ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
+      <div id="tkCtx"></div>
+      <div><label class="field" for="tkText">What is wrong?</label><div class="nb-chips tk-common" id="tkCommon" role="group" aria-label="Common problems"></div>
+        <label class="field"><textarea id="tkText" rows="3" aria-label="Describe the problem" placeholder="Describe it, e.g. the aircon in the bedroom blows warm air"></textarea></label></div>
+      ${R.fx.chips('tkPrC', PRIOS.map(([k, l, h]) => [k, `${l} <small>${h}</small>`]), st.prio, 'How urgent?')}
+      <div id="tkBlockW"></div>
+      </div></form>
+      <div class="foot nb-foot"><p id="tkErr" class="fx-err" role="alert"></p><button type="button" class="btn ghost" data-act="closeModal">Cancel</button><button type="submit" form="tkForm" class="btn" id="tkGo">Send to Maintenance</button></div>`, b => {
+      const $ = s => b.querySelector(s), form = $('#tkForm');
+      // hidden copies so older code and tests reading #tkKind / #tkPr still work
+      form.insertAdjacentHTML('beforeend', '<input type="hidden" id="tkKind" value="repair"><input type="hidden" id="tkPr" value="medium">');
+      const paint = () => {
+        const area = $('#tkArea').value, room = R.room(area), ih = room && R.inhouseIn(area), na = room && nextArrival(area);
+        $('#tkCommon').innerHTML = COMMON[st.kind].map(x => `<button type="button" class="fx-q" data-tkc="${esc(x)}" aria-pressed="${$('#tkText').value.includes(x)}">${esc(x)}</button>`).join('');
+        $('#tkCtx').innerHTML = !room ? '' : ih ? `<p class="small tk-ctx">${R.icon('users')}${esc(R.guest(ih.guestId).name)} is staying in room ${esc(area)}. The task is linked to their booking.</p>`
+          : na && na.arrive <= bd() ? `<p class="small tk-ctx warn-text">${R.icon('alert')}${esc(R.guest(na.guestId).name)} arrives in this room today.</p>` : '';
+        const canBlock = R.can('ooo') && room && st.kind === 'repair';
+        $('#tkBlockW').innerHTML = !canBlock ? '' : ih ? `<p class="small muted">A guest is in this room, so it can't be taken out of order. Move them first if it can't be used.</p>`
+          : `<label class="check"><input type="checkbox" id="tkBlock"> Take room ${esc(area)} out of order until it is fixed <span class="muted">(nobody can be checked in)</span></label>`;
+        $('#tkGo').textContent = `Send to ${$('#tkDept').value}`;
+      };
+      form.addEventListener('input', e => {
+        const n = e.target.name, id = e.target.id;
+        if (id) R.fx.clearErr(b, id);
+        if (n === 'tkKindC') { st.kind = e.target.value; $('#tkKind').value = st.kind; $('#tkDept').value = st.kind === 'repair' ? 'Maintenance' : 'Housekeeping'; }
+        if (n === 'tkPrC') { st.prio = e.target.value; $('#tkPr').value = st.prio; }
+        if (id === 'tkArea') { const ih = R.room(e.target.value) && R.inhouseIn(e.target.value); if (ih && st.prio === 'medium' && st.kind === 'repair') { st.prio = 'high'; $('#tkPr').value = 'high'; b.querySelector('[name=tkPrC][value=high]').checked = true; } }
+        if (id === 'tkBlock') return;
+        paint();
+      });
+      form.addEventListener('change', e => { if (e.target.id === 'tkDept' || e.target.id === 'tkArea') paint(); });
+      form.addEventListener('click', e => {
+        const c = e.target.closest('[data-tkc]'); if (!c) return;
+        const t = $('#tkText'), v = c.dataset.tkc;
+        if (!t.value.includes(v)) t.value = t.value.trim() ? `${v}. ${t.value.trim()}` : v;
+        R.fx.clearErr(b, 'tkText'); paint(); t.focus(); t.setSelectionRange(t.value.length, t.value.length);
+      });
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const text = $('#tkText').value.trim(), area = $('#tkArea').value, errs = [];
+        if (!area) errs.push(['tkArea', 'Choose the room or area.']);
+        if (text.length < 3) errs.push(['tkText', 'Say what is wrong, or tap one of the common problems.']);
+        if (!R.fx.report(b, errs, $('#tkErr'))) return;
+        const block = !!($('#tkBlock') && $('#tkBlock').checked && R.room(area));
         const ih = R.inhouseIn(area);
-        const t = { id: R.nextId('T'), kind: $('#tkKind').value, area, resId: ih ? ih.id : '', text, dept: $('#tkDept').value, priority: $('#tkPr').value, status: 'new', by: R.user().name, assignee: $('#tkDept').value === 'Maintenance' ? 'S9' : null, created: bd(), since: bd(), at: R.now(), blocks: block, history: [] };
+        const t = { id: R.nextId('T'), kind: st.kind, area, resId: ih ? ih.id : '', text, dept: $('#tkDept').value, priority: st.prio, status: 'new', by: R.user().name, assignee: $('#tkDept').value === 'Maintenance' ? 'S9' : null, created: bd(), since: bd(), at: R.now(), blocks: block, history: [] };
         R.S.tasks.unshift(t);
         if (block) R.room(area).ooo = { reason: text, since: bd(), until: addDays(bd(), 2) };
         R.log('Task created', `${text} (${area})${block ? ' · room out of order' : ''}`, t.id);
-        R.closeModal(); R.rerender(); R.toast(`Task sent to ${t.dept}`);
-      };
-    });
+        R.closeModal(); R.rerender(); R.toast(`Sent to ${t.dept}${block ? `. Room ${area} is out of order.` : ''}`);
+      });
+      paint();
+    }, { tall: true });
   };
 
   // one place that changes a task's status, so the history and the room stay right
