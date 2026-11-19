@@ -956,7 +956,10 @@ h2 .g-n{vertical-align:2px;margin-left:4px}
 
 .g-sub{font-size:12px;font-weight:700;color:var(--ink-3);margin:10px 0 2px}
 .g-sub:first-of-type{margin-top:0}
-.g-copy{border:0;background:none;color:var(--lagoon);font:600 12px var(--body);cursor:pointer;padding:4px 6px;min-height:28px;border-radius:6px;text-decoration:underline;text-underline-offset:2px}
+.g-copy{border:0;background:none;color:var(--lagoon);font:600 12px/1.2 var(--body);cursor:pointer;padding:3px 6px;min-height:24px;border-radius:6px;text-decoration:underline;text-underline-offset:2px;vertical-align:baseline;margin-left:2px}
+/* details in a narrow side panel: labels only as wide as the longest one, long values (emails) wrap inside the panel */
+.kv.kv-side{grid-template-columns:max-content minmax(0,1fr);gap:8px 16px;align-items:baseline}
+.kv.kv-side dd{overflow-wrap:anywhere;min-width:0}
 .g-copy:hover{background:var(--lagoon-l)}
 .eg-sub{font-size:12px;font-weight:500;margin-left:6px}
 
