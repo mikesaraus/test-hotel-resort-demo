@@ -430,4 +430,30 @@ window.R = window.R || {};
       guestResId: inhouse[0].id
     };
   };
+
+  // ---------- inventory: sample stock. Also added to saved demos from before inventory existed ----------
+  // perClean = taken out each time a room goes from dirty to clean; menu items with .stock take 1 unit per sale
+  R.seedInventory = function (S) {
+    const row = (id, cat, name, unit, qty, par, cost, perClean) => ({ id, cat, name, unit, qty, par, cost, perClean: perClean || 0, active: true });
+    const items = [
+      row('I1', 'Room amenities', 'Bath soap, 25 g', 'pcs', 420, 150, 9, 2),
+      row('I2', 'Room amenities', 'Shampoo sachet', 'pcs', 380, 150, 6, 2),
+      row('I3', 'Room amenities', 'Toothbrush and toothpaste kit', 'kits', 95, 120, 18, 2),
+      row('I4', 'Room amenities', 'Toilet paper', 'rolls', 160, 80, 14, 1),
+      row('I5', 'Room amenities', 'Bottled water, 500 ml', 'bottles', 300, 120, 12, 2),
+      row('I6', 'Room amenities', 'Room slippers', 'pairs', 40, 60, 35),
+      row('I7', 'Linen', 'Bath towel', 'pcs', 180, 120, 280),
+      row('I8', 'Linen', 'Hand towel', 'pcs', 150, 100, 120),
+      row('I9', 'Linen', 'Bed sheet set, double', 'sets', 70, 60, 950),
+      row('I10', 'Linen', 'Pool towel', 'pcs', 90, 80, 220),
+      row('I11', 'Bar & drinks', 'San Miguel Pale Pilsen', 'bottles', 96, 48, 52),
+      row('I12', 'Bar & drinks', 'Red Horse, 500 ml', 'bottles', 30, 48, 62),
+      row('I13', 'Bar & drinks', 'Young coconut (buko)', 'pcs', 40, 30, 30),
+      row('I14', 'Cleaning supplies', 'Toilet bowl cleaner, 1 L', 'bottles', 12, 6, 95),
+      row('I15', 'Cleaning supplies', 'Garbage bags, roll of 10', 'rolls', 8, 10, 65)
+    ];
+    const link = { M9: 'I11', M10: 'I12', M11: 'I13' };
+    (S.menu || []).forEach(m => { if (link[m.id] && !m.stock) m.stock = link[m.id]; });
+    return { items, moves: [] };
+  };
 })();

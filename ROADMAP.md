@@ -14,6 +14,7 @@ This file lists what the real build still needs.
 | Day pass | Counter sales of entrance, cottages and rentals (guest count checked against cottage size). Overnight guests get in free, pay regular cottage price unless a voucher or approved discount is used, green wristbands; cottages can be reserved ahead and linked to a room booking with senior / PWD rules, GCash / Maya references, change, wristbands; cottages and pavilion reserved in advance with deposit and food packages; deposit taken off on arrival |
 | Cashier | Shifts, cash count, X / Z reading, receipt register in number order |
 | Rooms | Property map and housekeeping board (occupied / vacant kept apart from dirty / clean / inspected), out of order, Undo for quick mistakes. Managers edit buildings, map layout, rooms, room types, cottages and entrance fees in Settings |
+| Inventory | Room amenities, linen, bar stock and supplies: on hand, reorder level, average cost per unit, stock value. Receive deliveries, issue to a team or write off, stock counts (a difference needs a reason and a supervisor PIN), full movement history. Cleaning a dirty room takes its amenity kit out (Undo puts it back); drinks linked to the till come out when sold. Switch off in Settings → Modules |
 | Tasks | Guest requests and repairs with any status change, waiting-on-parts with an expected date, overdue flags, history and updates |
 | Booking website | book.html: guests book a room or reserve a cottage in 4 steps (dates, choice, details, deposit), phone first; bookings land in the PMS as source "Website" |
 | Seasons | Every year / this year only / follows Easter / weekend of the last Monday; days of the week; room nights, Day pass, or late walk-in rooms; optional time window; Philippine presets; 12-month calendar |
@@ -30,8 +31,8 @@ This file lists what the real build still needs.
 5. **Company accounts (city ledger)**: companies that pay later by invoice, with unpaid amounts by age.
 6. **Rate plans and packages**: room only vs with breakfast, weekend minimum stay, promo codes; senior / PWD discount on room bills.
 7. **Automatic guest messages** by SMS / Messenger / email using the templates in the mockup.
-8. **Stock** for the restaurant, bar and minibar.
-9. **Lost and found** and **linen count** for housekeeping.
+8. **Stock, the rest** (basic inventory is in the mockup): recipes for kitchen dishes (one sinigang = 300 g pork...), minibar per room, purchase orders to suppliers, more than one storeroom.
+9. **Lost and found**, and linen sent to and back from the laundry (linen is already counted in Inventory).
 10. **Guest feedback** (1–5 rating after check-out) shown in Reports.
 
 ### Could have
