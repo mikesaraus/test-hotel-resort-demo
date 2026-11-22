@@ -242,6 +242,9 @@
   const areaOf = (r, geo) => geo === 'province' ? (PROVINCE[placeOf(r)] || 'Other or not given') : placeOf(r);
   R.act.anSet = (d, el) => { const k = d.k, v = el && el.tagName === 'SELECT' ? el.value : d.v; AN[k] = v; if (k === 'p' && v !== 'custom') { AN.from = ''; AN.to = ''; } R.render(); };
   R.act.anDates = () => { const f = document.getElementById('anFrom'), t = document.getElementById('anTo'); if (!f || !t) return; AN.from = f.value; AN.to = t.value < f.value ? f.value : t.value; R.render(); };
+  // phones: the four "who to count" filters fold away behind one button
+  let anOpen = false;
+  R.act.anMore = () => { anOpen = !anOpen; R.render(); };
   R.act.anClear = () => { Object.assign(AN, { src: '', loc: '', type: '', who: '' }); R.render(); };
   const isRepeat = r => (R.guest(r.guestId).stays || 0) > 1 || R.S.reservations.some(x => x.guestId === r.guestId && x.id !== r.id && x.status === 'checkedout' && x.arrive < r.arrive);
   function anRange() {
@@ -277,21 +280,23 @@
     // filter options from the data on record
     const srcs = [...new Set(R.S.reservations.map(r => r.channel))].sort();
     const places = [...new Set(R.S.reservations.map(r => areaOf(r, AN.geo)))].sort();
-    const sel = (k, label, opts, all) => `<label class="an-f"><span>${label}</span><select data-change="anSet" data-k="${k}" aria-label="${label}"><option value="">${all}</option>${opts.map(([v, l]) => `<option value="${esc(v)}" ${AN[k] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+    const sel = (k, label, opts, all) => `<label class="field an-f"><span>${label}</span><select data-change="anSet" data-k="${k}">${all ? `<option value="">${all}</option>` : ''}${opts.map(([v, l]) => `<option value="${esc(v)}" ${AN[k] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
     const seg = (k, opts, label) => `<div class="seg" role="group" aria-label="${label}">${opts.map(([v, l]) => `<button class="${AN[k] === v ? 'on' : ''}" aria-pressed="${AN[k] === v}" data-act="anSet" data-k="${k}" data-v="${v}"><b>${l}</b></button>`).join('')}</div>`;
-    const filtered = AN.src || AN.loc || AN.type || AN.who;
-    const bar = `<div class="an-bar">
-        ${seg('p', [['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['month', 'This month'], ['custom', 'Pick dates']], 'Period')}
-        ${AN.p === 'custom' ? `<div class="an-range" data-dp-range="days"><input type="date" id="anFrom" data-change="anDates" data-dp-label="From" value="${AN.from || from}" max="${bd()}"><input type="date" id="anTo" data-change="anDates" data-dp-label="To" value="${AN.to || to}" max="${addDays(bd(), 365)}"></div>` : ''}
-        ${sel('by', 'Count by', [['arrive', 'Arrival date'], ['created', 'Date booked']], 'Arrival date').replace('<option value="">Arrival date</option>', '')}
-        ${sel('src', 'Source', srcs.map(s => [s, s]), 'All sources')}
-        ${sel('loc', AN.geo === 'province' ? 'Province' : 'Town', places.map(p => [p, p]), 'Everywhere')}
-        ${sel('type', 'Room type', R.S.roomTypes.map(t => [t.id, t.name]), 'All rooms')}
-        ${sel('who', 'Guests', [['new', 'First stay'], ['repeat', 'Repeat guests']], 'New and repeat')}
-        ${filtered ? '<button class="btn sm ghost" data-act="anClear">Clear filters</button>' : ''}
-        <button class="btn sm ghost an-tables" data-act="rTables" aria-pressed="${T}">${T ? 'Hide tables' : 'Show tables'}</button></div>
-      <p class="small muted an-note">${R.fmt(from)} to ${R.fmt(to)} (${len} day${len === 1 ? '' : 's'}), bookings counted by ${AN.by === 'created' ? 'the date they were made' : 'arrival date'}, compared with the ${len} days before. Cancelled and no-show bookings only count in “Lost bookings”.</p>`;
-    if (!L.length) return bar + `<div class="panel g-empty"><b>No bookings match these filters</b><p class="muted">Try a longer period, or clear a filter.</p><div class="row">${filtered ? '<button class="btn ghost" data-act="anClear">Clear filters</button>' : ''}<button class="btn ghost" data-act="anSet" data-k="p" data-v="90">Last 90 days</button></div></div>`;
+    const nFilters = [AN.src, AN.loc, AN.type, AN.who].filter(Boolean).length;
+    // one filter card: the period on top, then who to count; everything below follows it
+    const bar = `<div class="panel an-filters ${anOpen ? 'open' : ''}">
+        <div class="an-top"><div class="an-period"><span class="an-label" id="anPL">Period</span>${seg('p', [['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['month', 'This month'], ['custom', 'Pick dates']], 'Period')}</div>
+          ${AN.p === 'custom' ? `<div class="an-range" data-dp-range="days"><input type="date" id="anFrom" data-change="anDates" data-dp-label="From" value="${AN.from || from}" max="${bd()}"><input type="date" id="anTo" data-change="anDates" data-dp-label="To" value="${AN.to || to}" max="${addDays(bd(), 365)}"></div>` : ''}
+          ${sel('by', 'Count bookings by', [['arrive', 'Arrival date'], ['created', 'Date booked']], '')}
+          <button class="btn sm ghost an-ftoggle" data-act="anMore" aria-expanded="${anOpen}" aria-controls="anGrid">${anOpen ? 'Hide filters' : 'Filters'}${nFilters ? ` (${nFilters} on)` : ''}</button>
+          <button class="btn sm ghost an-tables" data-act="rTables" aria-pressed="${T}">${T ? 'Hide tables' : 'Show tables'}</button></div>
+        <div class="an-grid" id="anGrid">${sel('src', 'Booking source', srcs.map(s => [s, s]), 'All sources')}
+          ${sel('loc', AN.geo === 'province' ? 'Home province' : 'Home town', places.map(p => [p, p]), 'Everywhere')}
+          ${sel('type', 'Room type', R.S.roomTypes.map(t => [t.id, t.name]), 'All room types')}
+          ${sel('who', 'Guests', [['new', 'First stay only'], ['repeat', 'Repeat guests only']], 'New and repeat')}</div>
+        <p class="small muted an-note">${R.icon('calendar')}<span><b>${R.fmt(from)} to ${R.fmt(to)}</b> (${len} day${len === 1 ? '' : 's'}), counted by ${AN.by === 'created' ? 'the date booked' : 'arrival date'}. Changes compare with the ${len} days before.${nFilters ? ` <b>${nFilters} filter${nFilters > 1 ? 's' : ''} on.</b>` : ''}</span>
+          ${nFilters ? '<button class="btn sm ghost" data-act="anClear">Clear filters</button>' : ''}</p></div>`;
+    if (!L.length) return bar + `<div class="panel g-empty"><b>No bookings match these filters</b><p class="muted">Try a longer period, or clear a filter.</p><div class="row">${nFilters ? '<button class="btn ghost" data-act="anClear">Clear filters</button>' : ''}<button class="btn ghost" data-act="anSet" data-k="p" data-v="90">Last 90 days</button></div></div>`;
     const kpi = (label, value, ch, explain) => `<div class="kpi"><div class="kpi-top"><span>${label}</span>${ch.html}</div><b class="kpi-val num">${value}</b><small>${explain}</small></div>`;
     // for lost bookings, up is bad news: same arrow and words, opposite colour
     const worse = c => ({ ...c, html: c.html.replace('delta up', 'delta up is-bad').replace('delta down', 'delta down is-good') });
@@ -352,23 +357,30 @@
     const tb = (head, rows) => T ? table(head, rows) : '';
     const geoSeg = `<div class="seg seg-sm" role="group" aria-label="Group places by">${[['town', 'Town'], ['province', 'Province']].map(([v, l]) => `<button class="${AN.geo === v ? 'on' : ''}" aria-pressed="${AN.geo === v}" data-act="anSet" data-k="geo" data-v="${v}"><b>${l}</b></button>`).join('')}</div>`;
     const heatSeg = `<div class="seg seg-sm" role="group" aria-label="Show">${[['daytour', 'Day pass visitors'], ['fnb', 'Restaurant orders']].map(([v, l]) => `<button class="${AN.heat === v ? 'on' : ''}" aria-pressed="${AN.heat === v}" data-act="anSet" data-k="heat" data-v="${v}"><b>${l}</b></button>`).join('')}</div>`;
-    return bar + `<div class="kpis">${kpis}</div>
+    // each chart opens with its answer in plain words; how it is counted sits underneath
+    const most = rows => rows.reduce((a, b) => b[1] > a[1] ? b : a, rows[0]);
+    const [nTop, sTop, lTop, tTop] = [most(nightsR), most(sizeR), most(leadR), most(typeR)];
+    const peakM = mk.reduce((a, b) => months[b].v > months[a].v ? b : a, mk[0]);
+    const card = (title, take, chart, foot, table, tools) => `<div class="panel an-card"><div class="ph"><h3>${title}</h3>${tools || ''}</div><p class="an-take">${take}</p>${chart}${foot ? `<p class="an-foot">${foot}</p>` : ''}${table}</div>`;
+    const sec = (id, title, sub, body) => `<section class="an-sec" aria-labelledby="${id}"><header class="an-sec-h"><h2 id="${id}">${title}</h2><p>${sub}</p></header>${body}</section>`;
+    return bar + `<div class="stack an">
+      <div class="kpis an-kpis">${kpis}</div>
       <div class="panel an-notes"><h2>What stands out</h2><ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul></div>
-      <div class="grid g2">
-        <div class="panel"><div class="ph"><h2>Where guests come from</h2>${geoSeg}</div><p class="small muted an-sub">Home town given at booking or check-in. Places with fewer than 3 bookings are grouped.</p>${where}${tb([AN.geo === 'province' ? 'Province' : 'Town', 'Bookings', 'Guests', 'Room revenue'], areas.map(([k, o]) => [esc(k), o.n, o.g, R.money(o.v)]))}</div>
-        <div class="panel"><h2>How they book</h2><p class="small muted an-sub">Bookings kept, share, revenue, and how many were lost (cancelled or no-show).</p>${how}${tb(['Source', 'Bookings', 'Lost', 'Room revenue'], srcRows.map(([k, o]) => [esc(k), o.n, o.lost, R.money(o.v)]))}</div>
-      </div>
-      <div class="panel"><div class="ph"><h2>Peak hours</h2>${heatSeg}</div><p class="small muted an-sub">${AN.heat === 'daytour' ? 'Day pass visitors' : 'Restaurant orders'} by day and hour, ${R.fmtShort(from)} to ${R.fmtShort(to)}. Follows the period only: walk-in sales don't record source or home town.</p>
-        ${sales.length ? heat : '<p class="empty">No sales in this period.</p>'}${tb(['Day', ...hours.map(h12)], WEEK_L.map((d, r) => [d, ...grid[r]]))}</div>
-      <div class="grid g2">
-        <div class="panel"><h2>Busiest days of the week</h2><p class="small muted an-sub">Arrivals by weekday.</p>${days}${tb(['Day', 'Arrivals'], WEEK_L.map((d, i) => [d, arrW[i]]))}</div>
-        <div class="panel"><h2>Month by month</h2><p class="small muted an-sub">Room revenue per month, all months on record, with the same filters.</p>${monthChart}${tb(['Month', 'Bookings', 'Room revenue'], mk.map(k => [mName(k), months[k].n, R.money(months[k].v)]))}</div>
-      </div>
-      <div class="grid g2">
-        <div class="panel"><h2>How long they stay</h2>${patt(nightsR, 'Bookings')}${tb(['Nights', 'Bookings'], nightsR)}</div>
-        <div class="panel"><h2>How far ahead they book</h2>${patt(leadR, 'Bookings')}${tb(['Booked', 'Bookings'], leadR)}</div>
-        <div class="panel"><h2>Group size</h2>${patt(sizeR, 'Bookings')}${tb(['Guests', 'Bookings'], sizeR)}</div>
-        <div class="panel"><h2>Room types</h2>${patt(typeR, 'Bookings')}${tb(['Room type', 'Bookings'], typeR)}</div>
+      ${sec('anWho', 'Who comes', 'Where guests live and how many come together.', `<div class="grid g2">
+        ${card('Where guests come from', topA ? `<b>${esc(topA[0])}</b> sends the most guests: ${pct(topA[1].n, cur.n)}% of bookings.` : '',
+          where, 'Home town given at booking or check-in. Places with fewer than 3 bookings are grouped.', tb([AN.geo === 'province' ? 'Province' : 'Town', 'Bookings', 'Guests', 'Room revenue'], areas.map(([k, o]) => [esc(k), o.n, o.g, R.money(o.v)])), geoSeg)}
+        ${card('Group size', `Most bookings are <b>${esc(sTop[0].toLowerCase())}</b> (${pct(sTop[1], cur.n)}%). ${pct(kids, cur.n)}% bring children.`, patt(sizeR, 'Bookings'), 'Adults and children on the booking.', tb(['Guests', 'Bookings'], sizeR))}</div>`)}
+      ${sec('anHow', 'How they book', 'Where bookings come from and how early they are made.', `<div class="grid g2">
+        ${card('Booking sources', topS ? `<b>${esc(topS[0])}</b> brings the most bookings: ${pct(topS[1].n, cur.n)}%.` : '', how, 'Each line: share of bookings, room revenue, and how many were lost to cancellations or no-shows.', tb(['Source', 'Bookings', 'Lost', 'Room revenue'], srcRows.map(([k, o]) => [esc(k), o.n, o.lost, R.money(o.v)])))}
+        ${card('How far ahead they book', `Most book <b>${esc(lTop[0].toLowerCase())}</b> ahead (${pct(lTop[1], cur.n)}%). Typical: ${Math.round(cur.lead)} days.`, patt(leadR, 'Bookings'), 'Days between making the booking and arriving.', tb(['Booked', 'Bookings'], leadR))}</div>`)}
+      ${sec('anWhat', 'What they stay in', 'The rooms guests choose and how many nights they stay.', `<div class="grid g2">
+        ${card('Room types', `<b>${esc(tTop[0])}</b> is booked the most (${pct(tTop[1], cur.n)}%).`, patt(typeR, 'Bookings'), '', tb(['Room type', 'Bookings'], typeR))}
+        ${card('How long they stay', `Most stay <b>${esc(nTop[0])}</b> (${pct(nTop[1], cur.n)}%). Average: ${cur.stay.toFixed(1)} nights.`, patt(nightsR, 'Bookings'), '', tb(['Nights', 'Bookings'], nightsR))}</div>`)}
+      ${sec('anWhen', 'When it is busy', 'The days, hours and months to plan staff and stock around.', `<div class="grid g2">
+        ${card('Busiest arrival days', arrW[peakW] ? `<b>${WEEK_L[peakW]}</b> has the most arrivals (${pct(arrW[peakW], cur.n)}%).` : 'No arrivals in this period.', days, 'The busiest day is highlighted. Point at a bar for the number.', tb(['Day', 'Arrivals'], WEEK_L.map((d, i) => [d, arrW[i]])))}
+        ${card('Month by month', `<b>${new Date(peakM + '-15T12:00').toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}</b> earned the most room revenue (${R.money(months[peakM].v)}).`, monthChart, 'Every month on record, with the same filters. This month and later ones are still filling up.', tb(['Month', 'Bookings', 'Room revenue'], mk.map(k => [mName(k), months[k].n, R.money(months[k].v)])))}</div>
+        ${card('Peak hours', sales.length && hTot[peakH] ? `${AN.heat === 'daytour' ? 'Day pass' : 'The restaurant'} is busiest around <b>${h12(hours[peakH])}</b>, and on <b>${WEEK_L[peakD]}s</b>.` : `No ${unit} in this period.`,
+          sales.length ? heat : '', `${AN.heat === 'daytour' ? 'Day pass visitors' : 'Restaurant orders'} by weekday and hour. Darker means busier. Follows the period only, because walk-in sales don't record a source or home town.`, tb(['Day', ...hours.map(h12)], WEEK_L.map((d, r) => [d, ...grid[r]])), heatSeg)}`)}
       </div>`;
   }
 
