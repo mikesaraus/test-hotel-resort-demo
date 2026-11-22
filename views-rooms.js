@@ -46,9 +46,11 @@
     const room = R.room(d.no), was = room.hk;
     if (!R.need(d.hk === 'inspected' ? 'inspect' : 'hk')) return;
     room.hk = d.hk;
+    // a dirty room made up again uses one amenity kit from stock
+    const stockBack = was === 'dirty' && d.hk !== 'dirty' ? R.stockOnClean(d.no) : null;
     R.log('Room status', `Room ${d.no}: ${R.chipLabel(d.hk)}`);
     R.closeModal(); R.rerender();
-    R.toast(`Room ${d.no}: ${R.chipLabel(d.hk)}`, '', () => { room.hk = was; R.log('Room status undone', `Room ${d.no}: back to ${R.chipLabel(was)}`); });
+    R.toast(`Room ${d.no}: ${R.chipLabel(d.hk)}`, '', () => { room.hk = was; if (stockBack) stockBack(); R.log('Room status undone', `Room ${d.no}: back to ${R.chipLabel(was)}`); });
   };
   R.act.takeOOO = d => {
     const room = R.room(d.no);

@@ -337,6 +337,7 @@
     if (why) return R.toast(why, 'warn');
     const sale = { kind: 'fnb', outlet: PO.outlet, diners: PO.diners, seniors: PO.seniors, seniorId: PO.seniorId.trim(), name: '' };
     const room = recordSale(PO, sale, c, `${PO.outlet}: ${c.lines.map(l => l.qty + '× ' + l.name).join(', ')}`, 'Food & beverage');
+    R.stockOnSale(PO.lines, sale.or || sale.id, PO.outlet);
     PO = Object.assign(pblank(), { outlet: PO.outlet }); R.rerender();
     R.toast(room ? `${R.peso(c.total)} charged to room ${room.room}` : `Sale ${sale.or} complete${sale.change > 0 ? ' · change ' + R.peso(sale.change) : ''}`);
     if (!room) R.receipt(sale.id);
