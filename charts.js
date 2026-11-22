@@ -107,6 +107,33 @@
     return `<svg viewBox="0 0 ${w} ${h}" class="spark" aria-hidden="true"><path d="${d}" stroke="${color}"/><circle cx="${x(vals.length - 1)}" cy="${y(vals[vals.length - 1])}" r="3" fill="${color}"/></svg>`;
   };
 
+  // ---------- one series of columns with its own labels (weekdays, months) ----------
+  // o = { labels, values, tip(i) -> 'Head|line|line', yFmt, color, height, peak (index to mark as the busiest) }
+  C.bars = function (o) {
+    const h = o.height || 200, n = o.values.length, yMax = C.nice(Math.max(...o.values, 1));
+    const f = frame(h, yMax, o.yFmt || (v => Math.round(v)), { l: 52, r: 12, t: 14, b: 30 });
+    const step = (f.R - f.L) / Math.max(1, n), bw = Math.max(4, Math.min(44, step * 0.58)), x = i => f.L + step * i + step / 2, y = v => f.B - (f.B - f.T) * v / yMax;
+    const bars = o.values.map((v, i) => v > 0 ? `<path d="M${x(i) - bw / 2},${f.B} V${y(v) + 4} q0,-4 4,-4 h${bw - 8} q4,0 4,4 V${f.B} Z" fill="${o.color || '#7A1F24'}" class="seg ${o.peak !== undefined && o.peak !== i ? 'dimmed' : ''}"/>` : '').join('');
+    const labels = o.labels.map((l, i) => `<text x="${x(i)}" y="${f.B + 18}" class="xlab" text-anchor="middle">${esc(l)}</text>`).join('');
+    const top = o.peak !== undefined && o.values[o.peak] > 0 ? `<text x="${x(o.peak)}" y="${y(o.values[o.peak]) - 6}" class="xlab peak-lab" text-anchor="middle">${esc((o.yFmt || (v => Math.round(v)))(o.values[o.peak]))}</text>` : '';
+    const hits = o.values.map((v, i) => `<rect x="${f.L + step * i}" y="${f.T}" width="${step}" height="${f.B - f.T}" class="hit" ${tipAttr(o.tip(i))}/>`).join('');
+    return `<div class="chart"><svg viewBox="0 0 ${VW} ${h}" class="chart-svg">${f.g}${bars}${top}${labels}${hits}</svg></div>`;
+  };
+
+  // ---------- heat grid (e.g. visitors by weekday and hour): one hue, light = fewer, dark = more ----------
+  // o = { rows: [label], cols: [label], val(r, c), tip(r, c, v), unit }
+  // four steps of the brand maroon, checked: adjacent steps 15+ apart (OKLab), also for colour-blind readers; empty cells use an outline, not a colour
+  C.HEAT = ['#E8C2BE', '#C98380', '#A04850', '#6E1B20'];
+  C.heat = function (o) {
+    const all = o.rows.flatMap((_, r) => o.cols.map((__, c) => o.val(r, c))), max = Math.max(...all, 1);
+    const step = v => v <= 0 ? -1 : Math.min(3, Math.floor(v / max * 4 - 1e-9));
+    const head = `<span></span>${o.cols.map(c => `<span class="heat-col">${esc(c)}</span>`).join('')}`;
+    const body = o.rows.map((rl, r) => `<span class="heat-row">${esc(rl)}</span>${o.cols.map((_, c) => { const v = o.val(r, c), k = step(v);
+      return `<span class="heat-cell ${k < 0 ? 'none' : ''}" style="${k < 0 ? '' : `background:${C.HEAT[k]}`}" ${tipAttr(o.tip(r, c, v))}></span>`; }).join('')}`).join('');
+    return `<div class="chart"><div class="heat-scroll"><div class="heat" style="grid-template-columns:44px repeat(${o.cols.length},minmax(26px,1fr))">${head}${body}</div></div>
+      <div class="heat-key" aria-hidden="true"><span>Fewer</span>${C.HEAT.map(c => `<i style="background:${c}"></i>`).join('')}<span>More ${esc(o.unit || '')}</span><span class="heat-none"><i></i>None</span></div></div>`;
+  };
+
   C.legend = (items, extra) => `<div class="c-legend">${items.map(s => `<span>${s.tick ? '<i class="lg-tick"></i>' : s.dashed ? `<i class="lg-dash" style="border-color:${s.color}"></i>` : `<i style="background:${s.color}"></i>`}${esc(s.name)}</span>`).join('')}${extra || ''}</div>`;
 
   // ---------- one tooltip for every chart (mouse and keyboard) ----------

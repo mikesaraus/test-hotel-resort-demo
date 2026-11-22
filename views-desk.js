@@ -6,6 +6,7 @@
   const bd = () => R.bd();
   const PAY_METHODS = ['Cash', 'GCash', 'Maya', 'Card', 'Bank transfer'];
   const ID_TYPES = ['PhilSys National ID', "Driver's license", 'Passport', 'UMID', 'Senior citizen ID', 'PWD ID', 'Other government ID'];
+  R.ID_TYPES = ID_TYPES; // also used by the guest profile
 
   // stop early, with a clear message, when the role can't do something
   R.need = function (p) {
@@ -31,7 +32,7 @@
     if (!r.room) return [false, 'Assign a room first'];
     const room = R.room(r.room);
     if (room.ooo) return [false, `Room ${r.room} is out of order`];
-    if (room.hk === 'dirty') return [false, `Room ${r.room} is still dirty. Mark it clean in Room status, or give the guest another room on the booking.`];
+    if (room.hk === 'dirty') return [false, `Room ${r.room} is still dirty`];
     return [true, ''];
   }
   R.canCheckIn = canCheckIn;
@@ -71,7 +72,7 @@
     const all = (d.ids ? d.ids.split(',') : [d.id]).map(R.res);
     const r = all[0], [ok, why] = canCheckIn(r);
     if (!R.need('checkin')) return;
-    if (!ok) return R.toast(why, 'warn');
+    if (!ok) return R.toast(why + (R.room(r.room || '') && R.room(r.room).hk === 'dirty' ? '. Mark it clean in Room status, or give the guest another room on the booking.' : ''), 'warn');
     const g = R.guest(r.guestId), t = R.type(r.type), many = all.length > 1;
     R.modal(many ? `Registration card: ${all.length} group rooms` : 'Registration card', `
       <div class="reg-head"><div><b>${esc(g.name)}</b><div class="small muted">${r.id} · ${esc(r.channel)}</div></div><div class="right"><b>Room${many ? 's ' + all.map(x => x.room).join(', ') : ' ' + r.room}</b><div class="small muted">${many ? 'Group leader signs for all rooms' : esc(t.name)}</div></div></div>
@@ -282,19 +283,72 @@
     R.log(r.room ? 'Room assigned' : 'Room unassigned', r.room ? 'Room ' + r.room : '', r.id);
     R.rerender(); R.toast(r.room ? `Room ${r.room} assigned` : 'Room unassigned');
   };
+  // move to another room: the rooms free for the rest of the stay, same type first and ready ones first,
+  // with what changes (price, cleaning); keep the rate or take the new room's
   R.act.moveRoom = d => {
-    const r = R.res(d.id);
+    const r = R.res(d.id), g = R.guest(r.guestId), cur = R.type(r.type);
     const from = r.status === 'inhouse' ? bd() : r.arrive, left = Math.max(1, daysBetween(from, R.dep(r)));
-    const free = R.freeRooms(null, from, left, r.id).filter(x => x.no !== r.room);
-    R.authorize({ perm: 'move', title: `Move from room ${r.room || '—'}`, ok: 'Move room', placeholder: 'e.g. aircon problem, guest asked for pool view',
-      body: `<label class="field">New room (free ${R.fmtShort(from)} → ${R.fmtShort(R.dep(r))})<select id="mvTo">${free.map(x => { const s = R.roomState(x); return `<option value="${x.no}">${x.no} · ${esc(R.type(x.type).name)} · ${s.label}</option>`; }).join('')}</select></label>
-        <p class="small muted" style="margin-top:6px">The rate stays the same. Change it separately if the new room costs more.</p>`,
-      check: () => free.length ? '' : 'No free rooms for these dates' }, a => {
-      const to = a.body.querySelector('#mvTo').value, old = r.room;
+    const posted = R.lines(r).filter(f => f.kind === 'night').length, rest = r.rates.slice(posted), restSum = rest.reduce((a, b) => a + b, 0);
+    const newRates = type => r.rates.map((x, i) => i < posted ? x : R.priceOn(type, addDays(r.arrive, i)));
+    const ready = x => x.hk === 'inspected' || x.hk === 'clean';
+    const zone = x => (R.S.zones.find(z => z.id === x.zone) || {}).name || '';
+    const free = R.freeRooms(null, from, left, r.id).filter(x => x.no !== r.room)
+      .sort((a, b) => (b.type === r.type) - (a.type === r.type) || ready(b) - ready(a) || a.no.localeCompare(b.no, undefined, { numeric: true }));
+    const same = free.filter(x => x.type === r.type).length;
+    const st = { show: same ? 'same' : 'all', q: '', to: '', rate: 'keep' };
+    const diffOf = x => newRates(x.type).slice(posted).reduce((a, b) => a + b, 0) - restSum;
+    const perNight = n => R.money(Math.abs(n) / Math.max(1, r.nights - posted));
+    R.authorize({ perm: 'move', title: r.room ? `Move from room ${r.room}` : 'Pick a room', ok: r.room ? 'Move room' : 'Give this room', placeholder: 'e.g. aircon problem, guest asked for pool view',
+      body: `<p class="mv-ctx"><b>${esc(g.name)}</b><span>${esc(cur.name)}${r.room ? `, room ${esc(r.room)}` : ''}. ${R.fmt(from)} to ${R.fmt(R.dep(r))}, ${left} night${left === 1 ? '' : 's'} ${r.status === 'inhouse' ? 'left' : ''}</span></p>
+        ${free.length ? `<div class="mv-tools">${R.fx.chips('mvShow', [['same', `Same type <small>${same}</small>`, !same], ['all', `All free rooms <small>${free.length}</small>`]], st.show, 'Show')}
+          ${free.length > 8 ? `<label class="field mv-find">Find a room<input id="mvQ" type="search" inputmode="search" placeholder="Room number or type" autocomplete="off"></label>` : ''}</div>
+          <div class="nb-types mv-list" id="mvList" role="radiogroup" aria-label="New room"></div>
+          <div id="mvRate"></div><div id="mvNote"></div>
+          <div class="nb-chips mv-why" role="group" aria-label="Common reasons">${['Aircon or repair problem', 'Guest asked for another room', 'Upgrade', 'Noise', 'Group wants rooms together'].map(x => `<button type="button" class="fx-q" data-mvwhy="${x}">${x}</button>`).join('')}</div>`
+        : `<p class="note warn">${R.icon('alert')}<span>No room is free from ${R.fmtShort(from)} to ${R.fmtShort(R.dep(r))}. Try changing the dates first.</span></p>`}`,
+      check: b => !free.length ? 'No room is free for these dates.' : !R.fx.radio(b, 'mvTo') ? 'Pick the new room.' : '',
+      mount: b => {
+        if (!free.length) { b.querySelector('#azGo').disabled = true; return; }
+        const $ = s => b.querySelector(s);
+        const paintList = () => {
+          const q = st.q.trim().toLowerCase();
+          const L = free.filter(x => (st.show === 'all' || x.type === r.type) && (!q || (x.no + ' ' + R.type(x.type).name + ' ' + zone(x)).toLowerCase().includes(q)));
+          $('#mvList').innerHTML = L.map(x => { const dlt = diffOf(x), t = R.type(x.type);
+            return `<label class="nb-type mv-room ${st.to === x.no ? 'on' : ''}"><input type="radio" name="mvTo" value="${esc(x.no)}" ${st.to === x.no ? 'checked' : ''}>
+              <span class="nb-type-name"><b>Room ${esc(x.no)}</b><small>${esc(t.name)}${zone(x) ? `, ${esc(zone(x))}` : ''}. Sleeps ${t.cap}${r.adults + r.children > t.cap ? `, <span class="warn-text">too small for ${r.adults + r.children}</span>` : ''}</small></span>
+              <span class="chip ${ready(x) ? 'green' : 'amber'}">${x.hk === 'inspected' ? 'Inspected' : x.hk === 'clean' ? 'Clean' : 'Needs cleaning'}</span>
+              <span class="nb-type-price"><b>${x.type === r.type || !dlt ? 'Same price' : `${dlt > 0 ? '+' : '−'}${perNight(dlt)}`}</b><small>${x.type === r.type || !dlt ? '' : 'a night at its rate'}</small></span></label>`; }).join('')
+            || `<p class="mv-none">No free room matches “${esc(st.q.trim())}”.</p>`;
+          paintPick();
+        };
+        const paintPick = () => {
+          const x = free.find(y => y.no === st.to), dlt = x ? diffOf(x) : 0;
+          $('#mvRate').innerHTML = x && x.type !== r.type && dlt ? R.fx.chips('mvRateC', [['keep', `Keep ${R.money(restSum / Math.max(1, rest.length))} a night`], ['new', `${esc(R.type(x.type).name)} rate, ${R.money((restSum + dlt) / Math.max(1, rest.length))} a night`]], st.rate, 'Room rate for the nights left') : '';
+          const notes = [];
+          if (x && x.type !== r.type && dlt && st.rate === 'keep') notes.push(dlt > 0 ? 'The guest keeps their current rate: an upgrade at no extra cost.' : 'The guest keeps their current rate, though the new room costs less.');
+          if (x && x.type !== r.type && dlt && st.rate === 'new') notes.push(`The ${r.nights - posted} night${r.nights - posted === 1 ? '' : 's'} not posted yet change to ${R.money(restSum + dlt)} in total (${dlt > 0 ? '+' : '−'}${R.money(Math.abs(dlt))}).`);
+          if (r.status === 'inhouse' && r.room) notes.push(`Room ${esc(r.room)} goes to housekeeping as dirty.`);
+          if (x && !ready(x) && r.status === 'inhouse') notes.push(`Room ${esc(x.no)} still needs cleaning, so the guest may have to wait.`);
+          $('#mvNote').innerHTML = notes.length ? `<ul class="mv-notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '';
+          $('#azGo').textContent = x ? (r.room ? `Move to room ${x.no}` : `Give room ${x.no}`) : (r.room ? 'Move room' : 'Give this room');
+        };
+        b.addEventListener('input', e => {
+          const n = e.target.name;
+          if (n === 'mvShow') { st.show = e.target.value; paintList(); }
+          else if (n === 'mvTo') { st.to = e.target.value; st.rate = 'keep'; b.querySelectorAll('.mv-room').forEach(l => l.classList.toggle('on', l.querySelector('input').checked)); paintPick(); b.querySelector('#azErr').textContent = ''; }
+          else if (n === 'mvRateC') { st.rate = e.target.value; paintPick(); }
+          else if (e.target.id === 'mvQ') { st.q = e.target.value; if (st.q && st.show === 'same' && !free.some(x => x.type === r.type && (x.no + ' ' + R.type(x.type).name).toLowerCase().includes(st.q.toLowerCase()))) { st.show = 'all'; b.querySelector('[name=mvShow][value=all]').checked = true; } paintList(); }
+        });
+        b.addEventListener('click', e => { const w = e.target.closest('[data-mvwhy]'); if (!w) return; const t = $('#azReason'); t.value = t.value.trim() ? t.value.trim().replace(/[.,]$/, '') + ', ' + w.dataset.mvwhy : w.dataset.mvwhy; t.focus(); });
+        paintList();
+      } }, a => {
+      const to = R.fx.radio(a.body, 'mvTo'), old = r.room, x = R.room(to), rateNew = R.fx.radio(a.body, 'mvRateC') === 'new';
       if (r.status === 'inhouse' && old) R.room(old).hk = 'dirty';
-      r.room = to; r.type = R.room(to).type;
-      R.log('Room move', `${old || '—'} → ${to} · ${a.reason}`, r.id, a.by);
-      R.rerender(); R.toast(`Moved to room ${to}`);
+      const before = R.stayValue(r);
+      r.room = to; r.type = x.type;
+      if (rateNew) r.rates = newRates(x.type);
+      R.log('Room move', `${old || '—'} → ${to}${rateNew ? ` · rate changed to ${R.type(x.type).name} price (${R.money(R.stayValue(r) - before)})` : ''} · ${a.reason}`, r.id, a.by);
+      R.rerender(); R.toast(`Moved to room ${to}${rateNew ? ', new rate' : ''}`);
     });
   };
   R.act.changeRate = d => {
@@ -310,29 +364,59 @@
       R.rerender(); R.toast('Rate changed');
     });
   };
+  // change the dates of a booking that hasn't checked in: one calendar showing how many rooms of its type are free each night,
+  // then what changes (dates, price, room); if its room is taken on the new dates, pick another or leave it unassigned
   R.act.editDates = d => {
     const r = R.res(d.id);
     if (!R.need('book')) return;
-    R.modal('Change dates', `<div class="form">
-      <label class="field">Arrival<input id="edA" type="date" value="${r.arrive}" min="${bd()}"></label>
-      <label class="field">Nights<input id="edN" type="number" min="1" max="30" value="${r.nights}"></label>
-      <div class="full" id="edQ"></div></div>
-      <div class="foot"><button class="btn ghost" data-act="closeModal">Back</button><button class="btn" id="edGo">Save new dates</button></div>`, b => {
-      const $ = s => b.querySelector(s);
+    const g = R.guest(r.guestId), t = R.type(r.type), before = R.stayValue(r), nPl = n => `${n} night${n === 1 ? '' : 's'}`;
+    if (window.DP) {
+      DP.info.edFree = day => { const n = R.typeAvail(r.type, day, 1, r.id); return n ? { text: `${n} free`, tone: n <= 1 ? 'few' : '', note: `${n} ${t.name} free` } : { text: 'Full', full: true, note: `no ${t.name} free` }; };
+      DP.info.edFree.legend = () => `${esc(t.name)} rooms free each night, not counting this booking. <i style="background:#8A5F1C"></i>1 left <i style="background:var(--hibiscus)"></i>Full`;
+    }
+    R.modal('Change dates', `<form class="ed" id="edForm" novalidate>
+      <p class="mv-ctx"><b>${esc(g.name)}</b><span>${esc(t.name)}${r.room ? `, room ${esc(r.room)}` : ''}. Now ${R.fmt(r.arrive)} to ${R.fmt(R.dep(r))}, ${nPl(r.nights)}.</span></p>
+      ${r.moved ? `<p class="note warn">${R.icon('alert')}<span>These dates were already changed ${r.moved === 1 ? 'once' : r.moved + ' times'}. House rule: ${esc(R.S.rules.cancellation)}</span></p>` : ''}
+      <div class="field ed-dates" data-dp-range><span>New dates</span>
+        <input type="date" id="edA" data-dp-label="Arrival" data-dp-info="edFree" min="${bd()}" value="${r.arrive}">
+        <input type="date" id="edOut" data-dp-label="Departure" min="${addDays(bd(), 1)}" value="${R.dep(r)}"></div>
+      <div id="edQ" aria-live="polite"></div></form>
+      <div class="foot"><button type="button" class="btn ghost" data-act="closeModal">Back</button><button type="submit" form="edForm" class="btn" id="edGo">Save new dates</button></div>`, b => {
+      const $ = s => b.querySelector(s), form = $('#edForm');
+      let pickRoom = null;
       const q = () => {
-        const a = $('#edA').value, n = +$('#edN').value || 1, left = R.typeAvail(r.type, a, n, r.id), rates = R.quote(r.type, a, n);
-        $('#edQ').innerHTML = `<div class="note">${left ? `${left} ${esc(R.type(r.type).name)} free · new price ${R.money(rates.reduce((x, y) => x + y, 0))}` : 'Sold out for these dates'}${r.room && !R.roomFree(r.room, a, n, r.id) ? `<br>Room ${r.room} is taken then, so the room will be unassigned.` : ''}</div>`;
-        $('#edGo').disabled = !left;
-        return { a, n, rates };
+        const a = $('#edA').value;
+        if (!($('#edOut').value > a)) $('#edOut').value = addDays(a, 1);
+        const n = Math.min(30, Math.max(1, daysBetween(a, $('#edOut').value))), left = R.typeAvail(r.type, a, n, r.id), rates = R.quote(r.type, a, n), after = rates.reduce((x, y) => x + y, 0);
+        const same = a === r.arrive && n === r.nights, keepRoom = !r.room || R.roomFree(r.room, a, n, r.id);
+        const free = keepRoom ? [] : R.freeRooms(r.type, a, n, r.id).map(x => x.no);
+        if (!keepRoom && (pickRoom === null || (pickRoom && !free.includes(pickRoom)))) pickRoom = (R.bestRoom(r.type, a, n) || {}).no || '';
+        return { a, n, left, rates, after, same, keepRoom, free };
       };
-      b.querySelectorAll('input').forEach(i => i.addEventListener('input', q)); q();
-      $('#edGo').onclick = () => {
-        const { a, n, rates } = q(), old = `${R.fmtShort(r.arrive)}, ${r.nights}n`;
-        if (r.room && !R.roomFree(r.room, a, n, r.id)) r.room = null;
-        Object.assign(r, { arrive: a, nights: n, rates });
-        R.log('Dates changed', `${old} → ${R.fmtShort(a)}, ${n}n`, r.id);
-        R.closeModal(); R.rerender(); R.toast('Dates changed');
+      const paint = () => {
+        const x = q(), dlt = x.after - before;
+        $('#edQ').innerHTML = !x.left ? `<p class="note warn">${R.icon('alert')}<span>No ${esc(t.name)} is free for all of these nights. Pick other dates.</span></p>`
+          : `<div class="ed-sum"><div class="nb-line"><span>Dates</span><b>${R.fmtShort(x.a)} to ${R.fmtShort(addDays(x.a, x.n))}, ${nPl(x.n)}</b></div>
+            <div class="nb-line"><span>Room price</span><b>${R.money(x.after)}</b></div>
+            <div class="nb-line ${dlt > 0 ? 'ed-up' : dlt < 0 ? 'ed-down' : ''}"><span>Compared with now</span><b>${x.same ? 'No change' : dlt ? `${dlt > 0 ? '+' : '−'}${R.money(Math.abs(dlt))}` : 'Same price'}</b></div>
+            ${R.paid(r) ? `<div class="nb-line"><span>Paid so far</span><span>${R.money(R.paid(r))}</span></div>` : ''}</div>
+            ${!r.room ? '<p class="small muted ed-room">No room assigned yet. One is picked at check-in, or on the booking.</p>'
+              : x.keepRoom ? `<p class="small muted ed-room">Room ${esc(r.room)} is free on these dates, so the guest keeps it.</p>`
+              : `<p class="ed-room"><b>Room ${esc(r.room)} is taken on these dates.</b></p>${R.fx.chips('edRoom', [...x.free.map(no => { const rm = R.room(no); return [no, `Room ${esc(no)}${rm.hk === 'dirty' && x.a === bd() ? ' <small>needs cleaning</small>' : ''}`]; }), ['', 'Leave unassigned']], pickRoom, `Move to`)}`}`;
+        $('#edGo').disabled = !x.left || x.same;
+        $('#edGo').textContent = x.same ? 'Pick new dates' : 'Save new dates';
       };
+      form.addEventListener('input', e => { if (e.target.name === 'edRoom') { pickRoom = e.target.value; return; } paint(); });
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const x = q(); if (!x.left || x.same) return;
+        const old = `${R.fmtShort(r.arrive)}, ${r.nights}n`, oldRoom = r.room;
+        if (!x.keepRoom) r.room = pickRoom || null;
+        Object.assign(r, { arrive: x.a, nights: x.n, rates: x.rates, moved: (r.moved || 0) + 1 });
+        R.log('Dates changed', `${old} → ${R.fmtShort(x.a)}, ${x.n}n · ${R.money(x.after)}${!x.keepRoom ? ` · room ${oldRoom} → ${r.room || 'unassigned'}` : ''}`, r.id);
+        R.closeModal(); R.rerender(); R.toast(`Dates changed${!x.keepRoom ? r.room ? `, now room ${r.room}` : ', room unassigned' : ''}`);
+      });
+      paint();
     });
   };
   R.act.cancelRes = d => {
@@ -612,8 +696,12 @@
   };
 
   // ---------- Reservations: list, availability, groups ----------
-  let rsStatus = 'upcoming', rsChannel = '', rsQ = '', rsView = 'list', avStart = null;
+  let rsStatus = 'upcoming', rsChannel = '', rsQ = '', rsView = 'list', avStart = null, rsSort = '', rsFlag = '';
   R.act.rsFilter = (d, el) => { if (el.id === 'rsStatus') rsStatus = el.value; else rsChannel = el.value; R.render(); };
+  R.act.rsTab = d => { rsStatus = d.s; rsSort = ''; rsFlag = ''; R.render(); };
+  R.act.rsSortBy = (d, el) => { rsSort = el.value; R.render(); };
+  R.act.rsFlagBy = d => { rsFlag = rsFlag === d.f ? '' : d.f; R.render(); };
+  R.act.rsClear = () => { rsQ = ''; rsChannel = ''; rsFlag = ''; R.render(); const s = document.getElementById('rsSearch'); if (s) s.focus(); };
   R.act.rsView = d => { rsView = d.v; R.render(); };
   R.act.avShift = d => { avStart = d.n === '0' ? bd() : addDays(avStart, +d.n); if (avStart < bd()) avStart = bd(); R.render(); };
   R.act.avNew = d => R.newBooking({ type: d.t, date: d.d });
@@ -648,21 +736,50 @@
     render() {
       const toggle = `<div class="row" style="margin-bottom:12px"><div class="seg" role="group" aria-label="View">${[['list', 'Bookings'], ['avail', 'Availability & groups']].map(([v, l]) => `<button class="${rsView === v ? 'on' : ''}" aria-pressed="${rsView === v}" data-act="rsView" data-v="${v}"><b>${l}</b></button>`).join('')}</div></div>`;
       if (rsView === 'avail') return toggle + availability();
-      const q = rsQ.toLowerCase();
-      let L = R.S.reservations.slice();
-      if (rsStatus === 'upcoming') L = L.filter(r => r.status === 'booked');
-      else if (rsStatus) L = L.filter(r => r.status === rsStatus);
-      if (rsChannel) L = L.filter(r => r.channel === rsChannel);
-      if (q) L = L.filter(r => R.guest(r.guestId).name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q));
-      L.sort((a, b) => rsStatus === 'upcoming' || rsStatus === 'booked' ? a.arrive.localeCompare(b.arrive) : b.arrive.localeCompare(a.arrive));
-      const opts = [['upcoming', 'Upcoming'], ['inhouse', 'In house'], ['checkedout', 'Checked out'], ['cancelled', 'Cancelled'], ['noshow', 'No-show'], ['', 'All']];
-      return toggle + `<div class="panel"><div class="ph">
-        <select id="rsStatus" data-change="rsFilter" class="search" aria-label="Status">${opts.map(([v, l]) => `<option value="${v}" ${rsStatus === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        <select id="rsChannel" data-change="rsFilter" class="search" aria-label="Booked through"><option value="">All sources</option>${R.S.sources.map(c => `<option ${c.name === rsChannel ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select>
-        <input class="search" id="rsSearch" placeholder="Guest or booking no." value="${esc(rsQ)}" aria-label="Search">
-        <div class="sp"><span class="muted small">${L.length} bookings</span>${R.can('book') ? `<button class="btn ghost" data-act="newGroup">Group</button><button class="btn" data-act="newBooking">${R.icon('plus')}New booking</button>` : ''}</div></div>
-        <div class="tbl"><table><thead><tr><th>Guest</th><th>Room</th><th>Stay</th><th>Status</th><th class="right">Value · balance</th></tr></thead>
-        <tbody>${L.slice(0, 150).map(r => { const b = r.status === 'booked' || r.status === 'inhouse' ? R.expectedBalance(r) : R.balance(r); return R.resRow(r, `<span class="num">${R.money(R.stayValue(r))}</span><div class="small ${b > 0 ? '' : 'muted'}">${b > 0 ? R.money(b) + ' due' : 'Paid'}</div>`); }).join('') || '<tr><td colspan="5" class="empty">No bookings match. Clear the filters or make a new booking.</td></tr>'}</tbody></table></div></div>`;
+      const q = rsQ.trim().toLowerCase(), qd = q.replace(/\D/g, ''), can = R.can('book');
+      const due = r => r.status === 'booked' || r.status === 'inhouse' ? R.expectedBalance(r) : R.balance(r);
+      // search and source first, so the tabs can show how many each would give
+      const base = R.S.reservations.filter(r => {
+        if (rsChannel && r.channel !== rsChannel) return false;
+        if (!q) return true;
+        const g = R.guest(r.guestId);
+        return g.name.toLowerCase().includes(q) || r.id.toLowerCase().includes(q) || (r.room || '').toLowerCase() === q || (qd.length >= 4 && (g.phone || '').replace(/\D/g, '').includes(qd));
+      });
+      const TABS = [['upcoming', 'Upcoming', r => r.status === 'booked'], ['inhouse', 'In house', r => r.status === 'inhouse'], ['checkedout', 'Checked out', r => r.status === 'checkedout'],
+        ['cancelled', 'Cancelled', r => r.status === 'cancelled'], ['noshow', 'No-show', r => r.status === 'noshow'], ['', 'All', () => true]];
+      const tab = TABS.find(t => t[0] === rsStatus) || TABS[0];
+      let L = base.filter(tab[2]);
+      // things that need doing before arrival
+      const FLAGS = [['nodep', 'No deposit yet', r => r.status === 'booked' && !R.paid(r)], ['noroom', 'No room assigned', r => r.status === 'booked' && !r.room], ['today', 'Arriving today', r => r.status === 'booked' && r.arrive <= bd()]];
+      const flags = rsStatus === 'upcoming' ? FLAGS.map(f => [...f, L.filter(f[2]).length]).filter(f => f[3]) : [];
+      const flag = flags.find(f => f[0] === rsFlag);
+      if (flag) L = L.filter(flag[2]);
+      const SORTS = [['arrive-asc', 'Arrival, soonest first'], ['arrive-desc', 'Arrival, latest first'], ['created', 'Recently booked'], ['name', 'Guest name'], ['due', 'Most to collect']];
+      const sort = rsSort || (rsStatus === 'upcoming' || rsStatus === 'inhouse' ? 'arrive-asc' : 'arrive-desc');
+      const by = { 'arrive-asc': (a, b) => a.arrive.localeCompare(b.arrive) || a.id.localeCompare(b.id), 'arrive-desc': (a, b) => b.arrive.localeCompare(a.arrive) || b.id.localeCompare(a.id),
+        created: (a, b) => (b.created || '').localeCompare(a.created || '') || b.id.localeCompare(a.id), name: (a, b) => R.guest(a.guestId).name.localeCompare(R.guest(b.guestId).name), due: (a, b) => due(b) - due(a) };
+      L.sort(by[sort]);
+      const shown = L.slice(0, 150), byDay = sort.startsWith('arrive');
+      const dayName = d => d === bd() ? 'Today' : d === addDays(bd(), 1) ? 'Tomorrow' : d === addDays(bd(), -1) ? 'Yesterday' : R.fmt(d);
+      let lastDay = '';
+      const rows = shown.map(r => {
+        const b = due(r), head = byDay && r.arrive !== lastDay ? (lastDay = r.arrive, `<tr class="rs-day"><th colspan="5">${dayName(r.arrive)} <span class="g-n">${L.filter(x => x.arrive === r.arrive).length}</span></th></tr>`) : '';
+        const money = `<span class="num">${R.money(R.stayValue(r))}</span><div class="small ${b > 0 ? '' : 'muted'}">${b > 0 ? R.money(b) + ' due' : 'Paid'}</div>${r.status === 'booked' && !R.paid(r) ? '<span class="chip amber">No deposit</span>' : ''}`;
+        return head + R.resRow(r, money);
+      }).join('');
+      const filtered = q || rsChannel || rsFlag;
+      return toggle + `<div class="panel"><div class="g-tools">
+          <div class="g-search">${R.icon('search')}<input type="search" id="rsSearch" placeholder="Guest, mobile, booking no. or room" value="${esc(rsQ)}" aria-label="Search bookings" autocomplete="off" spellcheck="false">${rsQ ? '<button type="button" class="g-clear" data-act="rsClear" aria-label="Clear the search">×</button>' : ''}</div>
+          <label class="g-sort">Source<select id="rsChannel" data-change="rsFilter" aria-label="Booked through"><option value="">All sources</option>${R.S.sources.map(c => `<option ${c.name === rsChannel ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+          <label class="g-sort">Sort<select data-change="rsSortBy" aria-label="Sort bookings">${SORTS.map(([k, l]) => `<option value="${k}" ${sort === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          ${can ? `<div class="row rs-new"><button class="btn ghost" data-act="newGroup">${R.icon('users')}Group</button><button class="btn" data-act="newBooking">${R.icon('plus')}New booking</button></div>` : ''}</div>
+        <div class="seg g-filters" role="group" aria-label="Status">${TABS.map(([k, l, f]) => `<button class="${rsStatus === k ? 'on' : ''}" aria-pressed="${rsStatus === k}" data-act="rsTab" data-s="${k}"><b>${l}</b> <span class="g-n">${base.filter(f).length}</span></button>`).join('')}</div>
+        ${flags.length ? `<div class="rs-flags" role="group" aria-label="Needs attention">${flags.map(([k, l, , n]) => `<button class="fx-q" aria-pressed="${rsFlag === k}" data-act="rsFlagBy" data-f="${k}">${l} <b>${n}</b></button>`).join('')}</div>` : ''}
+        ${L.length ? `<div class="tbl"><table class="rs-tbl"><thead><tr><th>Guest</th><th>Room</th><th>Stay</th><th>Status</th><th class="right">Value · balance</th></tr></thead><tbody>${rows}</tbody></table></div>
+          ${L.length > shown.length ? `<p class="small muted g-more">Showing ${shown.length} of ${L.length} bookings. Search, or pick a source, to find the others.</p>` : ''}`
+        : `<div class="g-empty"><b>${q ? `No bookings match “${esc(rsQ.trim())}”` : `No ${tab[1].toLowerCase()} bookings${rsChannel ? ' from ' + esc(rsChannel) : ''}${flag ? ' with “' + flag[1].toLowerCase() + '”' : ''}`}</b>
+            <p class="muted">${q ? 'Search by guest name, mobile number, booking number like CR-2105, or room number.' : 'Try another tab or source.'}</p>
+            <div class="row">${filtered ? '<button class="btn ghost" data-act="rsClear">Clear search and filters</button>' : ''}${rsStatus !== '' ? '<button class="btn ghost" data-act="rsTab" data-s="">Show all bookings</button>' : ''}</div></div>`}</div>`;
     },
     mount(el) {
       const s = el.querySelector('#rsSearch');
@@ -673,15 +790,14 @@
   // ---------- quick price quote to paste into Messenger / SMS ----------
   R.act.quoteMsg = () => {
     R.modal('Quote for Messenger', `<div class="form">
-      <label class="field">Arrival<input id="qmA" type="date" min="${bd()}" value="${avStart || bd()}"></label>
-      <label class="field">Nights<input id="qmN" type="number" min="1" max="30" value="1"></label>
+      <div class="field full" data-dp-range><span>Dates</span><input id="qmA" type="date" data-dp-label="Arrival" min="${bd()}" value="${avStart || bd()}"><input id="qmOut" type="date" data-dp-label="Departure" min="${addDays(bd(), 1)}" value="${addDays(avStart || bd(), 1)}"></div>
       <label class="field">Adults<input id="qmP" type="number" min="1" value="2"></label>
       <label class="field">Children<input id="qmC" type="number" min="0" value="0"></label>
       <label class="field full">Message<textarea id="qmT" rows="11"></textarea></label></div>
       <div class="foot"><button class="btn ghost" data-act="closeModal">Close</button><button class="btn" id="qmCopy">Copy message</button></div>`, b => {
       const $ = s => b.querySelector(s);
       const upd = () => {
-        const a = $('#qmA').value, n = Math.max(1, +$('#qmN').value || 1), ppl = (+$('#qmP').value || 0) + (+$('#qmC').value || 0);
+        const a = $('#qmA').value, n = Math.max(1, Math.min(30, daysBetween(a, $('#qmOut').value) || 1)), ppl = (+$('#qmP').value || 0) + (+$('#qmC').value || 0);
         const opts = R.S.roomTypes.filter(t => R.typeAvail(t.id, a, n) > 0).map(t => {
           const rooms = Math.ceil(ppl / t.cap), left = R.typeAvail(t.id, a, n), tot = R.quote(t.id, a, n).reduce((x, y) => x + y, 0) * rooms;
           return rooms <= left ? `• ${rooms > 1 ? rooms + ' × ' : ''}${t.name} (sleeps ${t.cap}, ${t.bed}): ₱${tot.toLocaleString('en-PH')} for ${n} night${n > 1 ? 's' : ''}` : '';
@@ -703,8 +819,7 @@
         <datalist id="ggGuests">${R.S.guests.map(g => `<option value="${esc(g.name)} — ${g.id}">${esc(g.phone)}</option>`).join('')}</datalist></label>
       <label class="field" id="ggPhW">Leader's mobile (new guest)<input id="ggPh" placeholder="+63 9xx xxx xxxx"></label>
       <label class="field">Booked through<select id="ggCh">${R.S.sources.map(c => `<option>${c.name}</option>`).join('')}</select></label>
-      <label class="field">Arrival<input id="ggA" type="date" min="${bd()}" value="${addDays(bd(), 7)}"></label>
-      <label class="field">Nights<input id="ggNt" type="number" min="1" max="30" value="2"></label>
+      <div class="field full" data-dp-range><span>Dates</span><input id="ggA" type="date" data-dp-label="Arrival" min="${bd()}" value="${addDays(bd(), 7)}"><input id="ggOut" type="date" data-dp-label="Departure" min="${addDays(bd(), 1)}" value="${addDays(bd(), 9)}"></div>
       <div class="full"><span class="field">Rooms</span><div id="ggRooms" class="grp-rooms"></div></div>
       <label class="field">Bill<select id="ggBill"><option value="master">One bill: the leader pays for all rooms</option><option value="individual">Separate bills: each room pays its own</option></select></label>
       <label class="field">Deposit received<select id="ggDep"><option value="">Not yet</option>${['GCash', 'Cash', 'Bank transfer', 'Card'].map(m => `<option>${m}</option>`).join('')}</select></label>
@@ -717,7 +832,7 @@
       const counts = {};
       const lead = () => { const m = $('#ggLead').value.match(/ — (G\d+)$/); return m ? R.findGuest(m[1]) : null; };
       const draw = () => {
-        const a = $('#ggA').value, n = Math.max(1, +$('#ggNt').value || 1);
+        const a = $('#ggA').value; if (!($('#ggOut').value > a)) $('#ggOut').value = addDays(a, 1); const n = Math.max(1, Math.min(30, daysBetween(a, $('#ggOut').value)));
         $('#ggPhW').style.display = lead() ? 'none' : '';
         $('#ggRooms').innerHTML = R.S.roomTypes.map(t => { const left = R.typeAvail(t.id, a, n); counts[t.id] = Math.min(counts[t.id] || 0, left); return `<div class="mini-step"><span style="min-width:150px">${esc(t.name)} <small class="muted">${left} free · sleeps ${t.cap}</small></span><button class="btn sm ghost" data-gg="${t.id}" data-n="-1" ${counts[t.id] ? '' : 'disabled'} aria-label="One less ${esc(t.name)}">−</button><b>${counts[t.id]}</b><button class="btn sm ghost" data-gg="${t.id}" data-n="1" ${counts[t.id] < left ? '' : 'disabled'} aria-label="One more ${esc(t.name)}">+</button></div>`; }).join('');
         const rooms = Object.values(counts).reduce((x, y) => x + y, 0);
@@ -877,7 +992,12 @@
       const open = r.status === 'booked' || r.status === 'inhouse';
       const expected = open ? R.expectedBalance(r) : R.balance(r);
       const main = [];
-      if (r.status === 'booked') main.push(ci ? `<button class="btn" data-act="checkIn" data-id="${r.id}">Check in</button>` : `<span class="small muted">${esc(why)}</span>`);
+      if (r.status === 'booked' && ci) main.push(`<button class="btn sm" data-act="checkIn" data-id="${r.id}">Check in</button>`);
+      // why this guest can't be checked in yet, and the buttons that fix it
+      const rm = r.room && R.room(r.room), early = r.status === 'booked' && r.arrive > day;
+      const block = r.status !== 'booked' || ci || early ? '' : `<div class="note warn bk-block" role="status">${R.icon('alert')}<div class="grow"><b>Can't check in yet: ${esc(why.charAt(0).toLowerCase() + why.slice(1))}.</b>
+          <span>${!r.room ? 'Give the guest a room first.' : rm.ooo ? 'Give the guest another room.' : 'Mark it clean once housekeeping is done, or give the guest another room.'}</span></div>
+          <div class="row">${rm && rm.hk === 'dirty' && !rm.ooo && R.can('hk') ? `<button class="btn sm" data-act="setHk" data-no="${rm.no}" data-hk="clean">Mark room ${esc(rm.no)} clean</button>` : ''}${R.can('move') || R.can('book') ? `<button class="btn sm ghost" data-act="moveRoom" data-id="${r.id}">${r.room ? 'Give another room' : 'Pick a room'}</button>` : ''}</div></div>`;
       if (r.status === 'inhouse') main.push(`<button class="btn" data-act="checkOut" data-id="${r.id}">Check out</button>`);
       const posted = R.lines(r).filter(f => f.kind === 'night').length;
 
@@ -922,7 +1042,7 @@
       const history = `<div class="panel"><h2>History</h2>${hist.map(a => `<div class="list-item"><span class="small muted num nowrap">${R.fmtShort(a.date)} ${a.at}</span><div class="grow small"><b>${esc(a.action)}</b> ${esc(a.detail)}</div><span class="small muted">${esc(R.staff(a.user).name)}</span></div>`).join('') || '<p class="empty">Changes made in this demo appear here: who did what, and when.</p>'}</div>`;
 
       return `<div class="bk-head"><a class="btn ghost sm" href="#reservations">${R.icon('back')}Reservations</a>
-          <span class="row">${R.chip(r.status)}<span class="chip">${r.id}</span>${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}</span><div class="sp row">${R.can('till') && r.status === 'inhouse' ? `<button class="btn ghost sm" data-act="useCottage" data-id="${r.id}">Use a cottage</button>` : ''}${R.can('till') && open ? `<button class="btn ghost sm" data-act="newEvent" data-res="${r.id}">Reserve a cottage</button>` : ''}${R.can('book') ? `<button class="btn ghost sm" data-act="msgGuest" data-id="${r.id}">Message guest</button>` : ''}${main.join('')}</div></div>
+          <span class="row bk-chips">${R.chip(r.status)}<span class="chip">${r.id}</span>${early ? `<span class="chip">Arrives ${R.fmt(r.arrive)}</span>` : ''}${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}</span><div class="sp row bk-actions">${R.can('till') && r.status === 'inhouse' ? `<button class="btn ghost sm" data-act="useCottage" data-id="${r.id}">Use a cottage</button>` : ''}${R.can('till') && open ? `<button class="btn ghost sm" data-act="newEvent" data-res="${r.id}">Reserve a cottage</button>` : ''}${R.can('book') ? `<button class="btn ghost sm" data-act="msgGuest" data-id="${r.id}">Message guest</button>` : ''}${main.join('')}</div></div>${block}
         <div class="pulse pulse5">
           <div><b>${R.fmtShort(r.arrive)} → ${R.fmtShort(R.dep(r))}</b><span>${r.nights} night${r.nights > 1 ? 's' : ''}</span></div>
           <div><b>${r.room || '—'}</b><span>${esc(t.name)}</span></div>

@@ -231,14 +231,155 @@
 
   R.act.printPage = () => window.print();
   R.act.sendReport = d => { R.log('Daily report sent', `${R.fmt(d.day)} to ${R.S.notify.to}`); R.save(); R.toast(`Daily manager report sent to ${R.S.notify.to.split(',')[0]}`); };
+  // ---------- Guests & trends: who comes, from where, when, and how they book ----------
+  // Filters in one row; everything below follows them. Places with fewer than 3 bookings are grouped, so no one guest stands out.
+  const AN = { p: '30', from: '', to: '', by: 'arrive', src: '', loc: '', type: '', who: '', geo: 'town', heat: 'daytour' };
+  const PROVINCE = { 'Cagayan de Oro': 'Misamis Oriental', Initao: 'Misamis Oriental', Naawan: 'Misamis Oriental', Manticao: 'Misamis Oriental', 'Iligan City': 'Lanao del Norte',
+    Ozamiz: 'Misamis Occidental', Bukidnon: 'Bukidnon', Davao: 'Davao', Cebu: 'Cebu', Manila: 'Metro Manila', 'Abroad (balikbayan)': 'Abroad' };
+  const WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], WEEK_L = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const wd = d => (new Date(d + 'T12:00:00').getDay() + 6) % 7; // Monday = 0
+  const placeOf = r => R.guest(r.guestId).town || 'Not given';
+  const areaOf = (r, geo) => geo === 'province' ? (PROVINCE[placeOf(r)] || 'Other or not given') : placeOf(r);
+  R.act.anSet = (d, el) => { const k = d.k, v = el && el.tagName === 'SELECT' ? el.value : d.v; AN[k] = v; if (k === 'p' && v !== 'custom') { AN.from = ''; AN.to = ''; } R.render(); };
+  R.act.anDates = () => { const f = document.getElementById('anFrom'), t = document.getElementById('anTo'); if (!f || !t) return; AN.from = f.value; AN.to = t.value < f.value ? f.value : t.value; R.render(); };
+  R.act.anClear = () => { Object.assign(AN, { src: '', loc: '', type: '', who: '' }); R.render(); };
+  const isRepeat = r => (R.guest(r.guestId).stays || 0) > 1 || R.S.reservations.some(x => x.guestId === r.guestId && x.id !== r.id && x.status === 'checkedout' && x.arrive < r.arrive);
+  function anRange() {
+    const t = bd();
+    if (AN.p === 'custom') return [AN.from || addDays(t, -29), AN.to || t];
+    if (AN.p === 'month') return [t.slice(0, 8) + '01', t];
+    const n = +AN.p || 30; return [addDays(t, 1 - n), t];
+  }
+  // the bookings that count, for a date range, with every filter applied
+  function anBookings(from, to, keepLost) {
+    return R.S.reservations.filter(r => {
+      const key = AN.by === 'created' ? r.created || r.arrive : r.arrive;
+      if (key < from || key > to) return false;
+      if (!keepLost && (r.status === 'cancelled' || r.status === 'noshow')) return false;
+      if (AN.src && r.channel !== AN.src) return false;
+      if (AN.type && r.type !== AN.type) return false;
+      if (AN.loc && areaOf(r, AN.geo) !== AN.loc) return false;
+      if (AN.who && (AN.who === 'repeat') !== isRepeat(r)) return false;
+      return true;
+    });
+  }
+  const median = a => { if (!a.length) return 0; const s = a.slice().sort((x, y) => x - y), m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const figures = (from, to) => {
+    const all = anBookings(from, to, true), L = all.filter(r => r.status !== 'cancelled' && r.status !== 'noshow');
+    return { all, L, n: L.length, guests: L.reduce((s, r) => s + r.adults + r.children, 0), rev: L.reduce((s, r) => s + R.stayValue(r), 0),
+      stay: L.length ? L.reduce((s, r) => s + r.nights, 0) / L.length : 0, lead: median(L.filter(r => r.created).map(r => Math.max(0, daysBetween(r.created, r.arrive)))),
+      repeat: L.length ? L.filter(isRepeat).length / L.length * 100 : 0, lost: all.length ? (all.length - L.length) / all.length * 100 : 0 };
+  };
+  function trends() {
+    const [from, to] = anRange(), len = daysBetween(from, to) + 1, pFrom = addDays(from, -len), pTo = addDays(from, -1);
+    const cur = figures(from, to), prev = figures(pFrom, pTo), L = cur.L, T = rTables;
+    const pct = (a, b) => b ? Math.round(a / b * 100) : 0;
+    // filter options from the data on record
+    const srcs = [...new Set(R.S.reservations.map(r => r.channel))].sort();
+    const places = [...new Set(R.S.reservations.map(r => areaOf(r, AN.geo)))].sort();
+    const sel = (k, label, opts, all) => `<label class="an-f"><span>${label}</span><select data-change="anSet" data-k="${k}" aria-label="${label}"><option value="">${all}</option>${opts.map(([v, l]) => `<option value="${esc(v)}" ${AN[k] === v ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
+    const seg = (k, opts, label) => `<div class="seg" role="group" aria-label="${label}">${opts.map(([v, l]) => `<button class="${AN[k] === v ? 'on' : ''}" aria-pressed="${AN[k] === v}" data-act="anSet" data-k="${k}" data-v="${v}"><b>${l}</b></button>`).join('')}</div>`;
+    const filtered = AN.src || AN.loc || AN.type || AN.who;
+    const bar = `<div class="an-bar">
+        ${seg('p', [['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['month', 'This month'], ['custom', 'Pick dates']], 'Period')}
+        ${AN.p === 'custom' ? `<div class="an-range" data-dp-range="days"><input type="date" id="anFrom" data-change="anDates" data-dp-label="From" value="${AN.from || from}" max="${bd()}"><input type="date" id="anTo" data-change="anDates" data-dp-label="To" value="${AN.to || to}" max="${addDays(bd(), 365)}"></div>` : ''}
+        ${sel('by', 'Count by', [['arrive', 'Arrival date'], ['created', 'Date booked']], 'Arrival date').replace('<option value="">Arrival date</option>', '')}
+        ${sel('src', 'Source', srcs.map(s => [s, s]), 'All sources')}
+        ${sel('loc', AN.geo === 'province' ? 'Province' : 'Town', places.map(p => [p, p]), 'Everywhere')}
+        ${sel('type', 'Room type', R.S.roomTypes.map(t => [t.id, t.name]), 'All rooms')}
+        ${sel('who', 'Guests', [['new', 'First stay'], ['repeat', 'Repeat guests']], 'New and repeat')}
+        ${filtered ? '<button class="btn sm ghost" data-act="anClear">Clear filters</button>' : ''}
+        <button class="btn sm ghost an-tables" data-act="rTables" aria-pressed="${T}">${T ? 'Hide tables' : 'Show tables'}</button></div>
+      <p class="small muted an-note">${R.fmt(from)} to ${R.fmt(to)} (${len} day${len === 1 ? '' : 's'}), bookings counted by ${AN.by === 'created' ? 'the date they were made' : 'arrival date'}, compared with the ${len} days before. Cancelled and no-show bookings only count in “Lost bookings”.</p>`;
+    if (!L.length) return bar + `<div class="panel g-empty"><b>No bookings match these filters</b><p class="muted">Try a longer period, or clear a filter.</p><div class="row">${filtered ? '<button class="btn ghost" data-act="anClear">Clear filters</button>' : ''}<button class="btn ghost" data-act="anSet" data-k="p" data-v="90">Last 90 days</button></div></div>`;
+    const kpi = (label, value, ch, explain) => `<div class="kpi"><div class="kpi-top"><span>${label}</span>${ch.html}</div><b class="kpi-val num">${value}</b><small>${explain}</small></div>`;
+    // for lost bookings, up is bad news: same arrow and words, opposite colour
+    const worse = c => ({ ...c, html: c.html.replace('delta up', 'delta up is-bad').replace('delta down', 'delta down is-good') });
+    const kpis = [
+      kpi('Bookings', cur.n, change(cur.n, prev.n), `${cur.guests} guests`),
+      kpi('Room revenue', R.money(cur.rev), change(cur.rev, prev.rev), `${R.money(cur.rev / cur.n)} a booking`),
+      kpi('Average stay', cur.stay.toFixed(1) + ' nights', change(cur.stay, prev.stay), 'Nights per booking'),
+      kpi('Booked ahead', Math.round(cur.lead) + ' days', change(cur.lead, prev.lead), 'Typical days between booking and arrival'),
+      kpi('Repeat guests', Math.round(cur.repeat) + '%', change(cur.repeat, prev.repeat, true), 'Had stayed with us before'),
+      kpi('Lost bookings', Math.round(cur.lost) + '%', worse(change(cur.lost, prev.lost, true)), 'Cancelled or no-show')].join('');
+
+    // where from (small places grouped)
+    const byArea = {}; L.forEach(r => { const k = areaOf(r, AN.geo), o = byArea[k] = byArea[k] || { n: 0, g: 0, v: 0 }; o.n++; o.g += r.adults + r.children; o.v += R.stayValue(r); });
+    let areas = Object.entries(byArea).sort((a, b) => b[1].n - a[1].n);
+    const small = areas.filter(([, o]) => o.n < 3);
+    if (small.length > 1) { const o = small.reduce((s, [, x]) => ({ n: s.n + x.n, g: s.g + x.g, v: s.v + x.v }), { n: 0, g: 0, v: 0 }); areas = areas.filter(([, x]) => x.n >= 3).concat([[`Other places (${small.length})`, o]]); }
+    const where = C().hbars(areas.map(([k, o]) => ({ name: k, sub: `${pct(o.n, cur.n)}% · ${o.g} guests · ${R.money(o.v)}`, parts: [{ v: o.n, color: '#7A1F24', label: 'Bookings' }] })), { fmt: v => `${v} booking${v === 1 ? '' : 's'}` });
+    // how they book
+    const bySrc = {}; cur.all.forEach(r => { const o = bySrc[r.channel] = bySrc[r.channel] || { n: 0, lost: 0, v: 0 }; if (r.status === 'cancelled' || r.status === 'noshow') o.lost++; else { o.n++; o.v += R.stayValue(r); } });
+    const srcRows = Object.entries(bySrc).sort((a, b) => b[1].n - a[1].n);
+    const how = C().hbars(srcRows.map(([k, o]) => ({ name: k, sub: `${pct(o.n, cur.n)}% · ${R.money(o.v)} · ${pct(o.lost, o.n + o.lost)}% lost`, parts: [{ v: o.n, color: '#7A1F24', label: 'Bookings' }] })), { fmt: v => `${v} booking${v === 1 ? '' : 's'}` });
+    // peak hours (Day pass visitors, or restaurant orders) - these follow the period only
+    const sales = R.S.sales.filter(x => x.date >= from && x.date <= to && x.at && (AN.heat === 'daytour' ? x.kind === 'daytour' : x.kind === 'fnb'));
+    const hours = Array.from({ length: 15 }, (_, i) => 7 + i), grid = WEEK.map(() => hours.map(() => 0));
+    sales.forEach(x => { const h = +x.at.slice(0, 2), c = hours.indexOf(h); if (c >= 0) grid[wd(x.date)][c] += AN.heat === 'daytour' ? (x.calc.heads || 0) : 1; });
+    const unit = AN.heat === 'daytour' ? 'visitors' : 'orders';
+    const hTot = hours.map((_, c) => grid.reduce((s, row) => s + row[c], 0)), dTot = grid.map(row => row.reduce((a, b) => a + b, 0));
+    const peakH = hTot.indexOf(Math.max(...hTot)), peakD = dTot.indexOf(Math.max(...dTot));
+    const h12 = h => `${(h + 11) % 12 + 1} ${h < 12 ? 'am' : 'pm'}`;
+    const heat = C().heat({ rows: WEEK, cols: hours.map(h => (h + 11) % 12 + 1 + (h < 12 ? 'a' : 'p')), val: (r, c) => grid[r][c],
+      tip: (r, c, v) => `${WEEK_L[r]}, ${h12(hours[c])} to ${h12(hours[c] + 1)}|${v ? `${v} ${unit}` : `No ${unit}`}`, unit });
+    // busiest days of the week (arrivals) and months
+    const arrW = WEEK.map((_, i) => L.filter(r => wd(r.arrive) === i).length), peakW = arrW.indexOf(Math.max(...arrW));
+    const days = C().bars({ labels: WEEK, values: arrW, peak: peakW, tip: i => `${WEEK_L[i]}|${arrW[i]} arrival${arrW[i] === 1 ? '' : 's'}|${pct(arrW[i], cur.n)}% of bookings` });
+    const months = {}; R.S.reservations.forEach(r => { if (r.status === 'cancelled' || r.status === 'noshow') return; const k = (AN.by === 'created' ? r.created || r.arrive : r.arrive).slice(0, 7);
+      if (AN.src && r.channel !== AN.src || AN.type && r.type !== AN.type || AN.loc && areaOf(r, AN.geo) !== AN.loc || AN.who && (AN.who === 'repeat') !== isRepeat(r)) return;
+      const o = months[k] = months[k] || { n: 0, v: 0 }; o.n++; o.v += R.stayValue(r); });
+    const mk = Object.keys(months).sort(), mName = k => new Date(k + '-15T12:00').toLocaleDateString('en-PH', { month: 'short', year: '2-digit' });
+    const monthChart = C().bars({ labels: mk.map(mName), values: mk.map(k => months[k].v), yFmt: C().shortMoney, peak: mk.indexOf(mk.reduce((a, b) => months[b].v > months[a].v ? b : a, mk[0])),
+      tip: i => `${new Date(mk[i] + '-15T12:00').toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}|${R.money(months[mk[i]].v)} room revenue|${months[mk[i]].n} bookings${mk[i] === bd().slice(0, 7) ? '|Month not over yet' : ''}${mk[i] > bd().slice(0, 7) ? '|Booked so far' : ''}` });
+    // stay patterns
+    const bucket = (vals, edges) => edges.map(([l, lo, hi]) => [l, vals.filter(v => v >= lo && v <= hi).length]);
+    const patt = (rows, noun) => C().hbars(rows.map(([l, n]) => ({ name: l, sub: `${pct(n, cur.n)}%`, parts: [{ v: n, color: '#7A1F24', label: noun }] })), { fmt: v => `${v} booking${v === 1 ? '' : 's'}` });
+    const nightsR = bucket(L.map(r => r.nights), [['1 night', 1, 1], ['2 nights', 2, 2], ['3 nights', 3, 3], ['4 to 6 nights', 4, 6], ['7 or more', 7, 999]]);
+    const leadR = bucket(L.filter(r => r.created).map(r => daysBetween(r.created, r.arrive)), [['Same day', -99, 0], ['1 to 7 days', 1, 7], ['8 to 30 days', 8, 30], ['31 to 90 days', 31, 90], ['More than 90', 91, 9999]]);
+    const sizeR = bucket(L.map(r => r.adults + r.children), [['1 guest', 1, 1], ['2 guests', 2, 2], ['3 to 4', 3, 4], ['5 to 8', 5, 8], ['9 or more', 9, 999]]);
+    const typeR = R.S.roomTypes.map(t => [t.name, L.filter(r => r.type === t.id).length]).sort((a, b) => b[1] - a[1]);
+    const kids = L.filter(r => r.children > 0).length;
+    // what stands out
+    const topA = areas[0], topS = srcRows[0];
+    const notes = [
+      topA && `<b>${esc(topA[0])}</b> sends the most guests: ${pct(topA[1].n, cur.n)}% of bookings${areas[1] ? `, then ${esc(areas[1][0])} (${pct(areas[1][1].n, cur.n)}%)` : ''}.`,
+      topS && `Most bookings come through <b>${esc(topS[0])}</b> (${pct(topS[1].n, cur.n)}%).${(() => { const worst = srcRows.filter(([, o]) => o.n + o.lost >= 5).sort((a, b) => b[1].lost / (b[1].n + b[1].lost) - a[1].lost / (a[1].n + a[1].lost))[0]; return worst && worst[1].lost ? ` ${esc(worst[0])} loses the most: ${pct(worst[1].lost, worst[1].n + worst[1].lost)}% cancel or don't show.` : ''; })()}`,
+      arrW[peakW] && `<b>${WEEK_L[peakW]}</b> is the busiest arrival day (${pct(arrW[peakW], cur.n)}% of bookings).`,
+      sales.length && hTot[peakH] && `${AN.heat === 'daytour' ? 'Day pass' : 'The restaurant'} is busiest around <b>${h12(hours[peakH])}</b>, and on <b>${WEEK_L[peakD]}s</b>.`,
+      `Guests book a typical <b>${Math.round(cur.lead)} days</b> ahead and stay <b>${cur.stay.toFixed(1)} nights</b>; ${pct(kids, cur.n)}% of bookings bring children.`
+    ].filter(Boolean);
+    const tb = (head, rows) => T ? table(head, rows) : '';
+    const geoSeg = `<div class="seg seg-sm" role="group" aria-label="Group places by">${[['town', 'Town'], ['province', 'Province']].map(([v, l]) => `<button class="${AN.geo === v ? 'on' : ''}" aria-pressed="${AN.geo === v}" data-act="anSet" data-k="geo" data-v="${v}"><b>${l}</b></button>`).join('')}</div>`;
+    const heatSeg = `<div class="seg seg-sm" role="group" aria-label="Show">${[['daytour', 'Day pass visitors'], ['fnb', 'Restaurant orders']].map(([v, l]) => `<button class="${AN.heat === v ? 'on' : ''}" aria-pressed="${AN.heat === v}" data-act="anSet" data-k="heat" data-v="${v}"><b>${l}</b></button>`).join('')}</div>`;
+    return bar + `<div class="kpis">${kpis}</div>
+      <div class="panel an-notes"><h2>What stands out</h2><ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul></div>
+      <div class="grid g2">
+        <div class="panel"><div class="ph"><h2>Where guests come from</h2>${geoSeg}</div><p class="small muted an-sub">Home town given at booking or check-in. Places with fewer than 3 bookings are grouped.</p>${where}${tb([AN.geo === 'province' ? 'Province' : 'Town', 'Bookings', 'Guests', 'Room revenue'], areas.map(([k, o]) => [esc(k), o.n, o.g, R.money(o.v)]))}</div>
+        <div class="panel"><h2>How they book</h2><p class="small muted an-sub">Bookings kept, share, revenue, and how many were lost (cancelled or no-show).</p>${how}${tb(['Source', 'Bookings', 'Lost', 'Room revenue'], srcRows.map(([k, o]) => [esc(k), o.n, o.lost, R.money(o.v)]))}</div>
+      </div>
+      <div class="panel"><div class="ph"><h2>Peak hours</h2>${heatSeg}</div><p class="small muted an-sub">${AN.heat === 'daytour' ? 'Day pass visitors' : 'Restaurant orders'} by day and hour, ${R.fmtShort(from)} to ${R.fmtShort(to)}. Follows the period only: walk-in sales don't record source or home town.</p>
+        ${sales.length ? heat : '<p class="empty">No sales in this period.</p>'}${tb(['Day', ...hours.map(h12)], WEEK_L.map((d, r) => [d, ...grid[r]]))}</div>
+      <div class="grid g2">
+        <div class="panel"><h2>Busiest days of the week</h2><p class="small muted an-sub">Arrivals by weekday.</p>${days}${tb(['Day', 'Arrivals'], WEEK_L.map((d, i) => [d, arrW[i]]))}</div>
+        <div class="panel"><h2>Month by month</h2><p class="small muted an-sub">Room revenue per month, all months on record, with the same filters.</p>${monthChart}${tb(['Month', 'Bookings', 'Room revenue'], mk.map(k => [mName(k), months[k].n, R.money(months[k].v)]))}</div>
+      </div>
+      <div class="grid g2">
+        <div class="panel"><h2>How long they stay</h2>${patt(nightsR, 'Bookings')}${tb(['Nights', 'Bookings'], nightsR)}</div>
+        <div class="panel"><h2>How far ahead they book</h2>${patt(leadR, 'Bookings')}${tb(['Booked', 'Bookings'], leadR)}</div>
+        <div class="panel"><h2>Group size</h2>${patt(sizeR, 'Bookings')}${tb(['Guests', 'Bookings'], sizeR)}</div>
+        <div class="panel"><h2>Room types</h2>${patt(typeR, 'Bookings')}${tb(['Room type', 'Bookings'], typeR)}</div>
+      </div>`;
+  }
+
   R.views.reports = {
     title: 'Reports',
     hint: 'How the resort is doing. Figures update live as bookings, charges and payments happen.',
     render() {
-      const tabs = [['health', 'Business health'], ['daily', 'Daily manager report'], ['revenue', 'Revenue'], ['daytour', 'Day tour'], ['ops', 'Operations']];
+      const tabs = [['health', 'Business health'], ['trends', 'Guests & trends'], ['daily', 'Daily manager report'], ['revenue', 'Revenue'], ['daytour', 'Day tour'], ['ops', 'Operations']];
       if (!tabs.some(t => t[0] === rTab)) rTab = 'health';
       return `<div class="tabs no-print">${tabs.map(([k, l]) => `<button class="${rTab === k ? 'on' : ''}" aria-pressed="${rTab === k}" data-act="rTab" data-tab="${k}">${l}</button>`).join('')}</div>
-        ${{ health, daily, revenue, daytour, ops }[rTab]()}`;
+        ${{ health, trends, daily, revenue, daytour, ops }[rTab]()}`;
     }
   };
 })();

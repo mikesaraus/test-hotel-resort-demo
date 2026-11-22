@@ -19,31 +19,79 @@
     return nx ? `<span class="chip teal">Arrives ${R.fmtShort(nx.arrive)}</span>` : '';
   };
 
+  // ---------- searching every field of a guest ----------
+  // every word has to be found somewhere: "maria cebu" finds Maria from Cebu. Accents and spacing in numbers don't matter.
+  const fold = x => String(x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const SEARCH_IN = [['name', 'name'], ['phone', 'mobile'], ['email', 'email'], ['town', 'address'], ['nationality', 'nationality'], ['tag', 'tag'], ['prefs', 'notes'], ['idType', 'ID type'], ['idNo', 'ID number'], ['id', 'guest no.'], ['bookings', 'booking no.']];
+  const fieldsOf = g => ({ name: g.name, phone: g.phone, email: g.email, town: g.town, nationality: g.nationality, tag: g.tag, prefs: g.prefs, idType: g.idType, idNo: g.idNo, id: g.id, bookings: staysOf(g).map(r => r.id).join(' ') });
+  const hit = (val, w) => { const v = fold(val); if (v.includes(w)) return true; const dw = w.replace(/\D/g, ''); return dw.length >= 3 && dw.length === w.replace(/[\s()+-]/g, '').length && v.replace(/\D/g, '').includes(dw); };
+  const searchGuest = (g, words) => {
+    const f = fieldsOf(g), found = new Set();
+    for (const w of words) { const keys = SEARCH_IN.filter(([k]) => hit(f[k], w)).map(([k]) => k); if (!keys.length) return null; keys.forEach(k => found.add(k)); }
+    return found;
+  };
+  // the text with the searched words marked (for name, mobile, email, address shown in the row)
+  const mark = (text, words) => {
+    let h = esc(text || ''); if (!words.length || !text) return h;
+    const t = fold(text), spans = [];
+    words.forEach(w => { let i = t.indexOf(w); while (i >= 0 && w) { spans.push([i, i + w.length]); i = t.indexOf(w, i + w.length); } });
+    if (!spans.length) return h;
+    spans.sort((a, b) => a[0] - b[0]); let out = '', at = 0;
+    spans.forEach(([a, b]) => { if (a < at) return; out += esc(text.slice(at, a)) + '<mark>' + esc(text.slice(a, b)) + '</mark>'; at = b; });
+    return out + esc(text.slice(at));
+  };
+  const snippet = (text, words) => { const t = fold(text), w = words.find(x => t.includes(x)); if (!w) return esc(text); const i = t.indexOf(w), a = Math.max(0, i - 24), b = Math.min(text.length, i + w.length + 32); return (a ? '…' : '') + mark(text.slice(a, b), words) + (b < text.length ? '…' : ''); };
+
   // ---------- Guests list ----------
-  let gQ = '', gF = 'all';
+  let gQ = '', gF = 'all', gSort = 'recent';
+  const lastArrive = g => staysOf(g).filter(r => r.status !== 'cancelled').map(r => r.arrive).sort().pop() || '';
+  const whenChip = g => {
+    const now = nowChip(g); if (now) return now;
+    const last = staysOf(g).filter(r => r.status === 'checkedout').map(r => R.dep(r)).sort().pop();
+    return last ? `<span class="small muted">Stayed ${R.fmtShort(last)}</span>` : '<span class="small muted">No stays yet</span>';
+  };
+  // when the words were found in a field the row doesn't show, say which and show the bit that matched
+  const foundLine = (g, f, words) => {
+    if (!f) return '';
+    const shown = ['name', 'phone', 'email', 'town'], rest = SEARCH_IN.filter(([k]) => f.has(k) && !shown.includes(k));
+    if (!rest.length) return '';
+    const val = (k) => k === 'idNo' ? esc(g.idNo.replace(/.(?=.{3})/g, '•')) : k === 'prefs' ? snippet(g.prefs, words) : k === 'bookings' ? mark(staysOf(g).map(r => r.id).filter(id => words.some(w => fold(id).includes(w))).join(', '), words) : mark(fieldsOf(g)[k], words);
+    return `<div class="g-found">Found in ${rest.map(([k, l]) => `${l}: <span>${val(k)}</span>`).join('; ')}</div>`;
+  };
+  const SORTS = [['recent', 'Most recent stay'], ['name', 'Name, A to Z'], ['stays', 'Most stays'], ['spend', 'Highest spend']];
   R.act.gFilter = d => { gF = d.f; R.render(); };
+  R.act.gSort = (d, el) => { gSort = el.value; R.render(); };
+  R.act.gClear = () => { gQ = ''; R.render(); const s = document.getElementById('gSearch'); if (s) s.focus(); };
   R.views.guests = {
     title: 'Guests',
     hint: 'Everyone who has stayed or is booked: contact details, preferences, history and spend.',
     render() {
-      const q = gQ.toLowerCase(), qd = q.replace(/\D/g, '');
+      const q = gQ.trim().toLowerCase(), qd = q.replace(/\D/g, '');
       const dupSet = new Set(); R.S.guests.forEach(g => { if (R.dupsOf(g).length) dupSet.add(g.id); });
-      let L = R.S.guests.filter(g => !q || g.name.toLowerCase().includes(q) || (g.email || '').toLowerCase().includes(q) || (qd.length >= 3 && g.phone.replace(/\D/g, '').includes(qd)));
-      if (gF === 'inhouse') L = L.filter(g => staysOf(g).some(r => r.status === 'inhouse'));
-      if (gF === 'soon') L = L.filter(g => staysOf(g).some(r => r.status === 'booked' && r.arrive <= addDays(bd(), 7)));
-      if (gF === 'repeat') L = L.filter(g => pastStays(g) >= 2 || g.tag === 'Repeat guest');
-      if (gF === 'vip') L = L.filter(g => g.tag === 'VIP');
-      if (gF === 'dups') L = L.filter(g => dupSet.has(g.id)).sort((a, b) => a.name.localeCompare(b.name));
-      const F = [['all', 'All'], ['inhouse', 'In house'], ['soon', 'Arriving in 7 days'], ['repeat', 'Repeat'], ['vip', 'VIP'], ['dups', `Possible duplicates (${dupSet.size})`]];
-      return `<div class="panel"><div class="ph"><input class="search" id="gSearch" placeholder="Name, mobile or email" value="${esc(gQ)}" aria-label="Search guests" style="min-width:240px">
-          <div class="seg" role="group" aria-label="Filter">${F.map(([f, l]) => `<button class="${gF === f ? 'on' : ''}" aria-pressed="${gF === f}" data-act="gFilter" data-f="${f}"><b>${l}</b></button>`).join('')}</div>
-          <div class="sp muted small">${L.length} guests</div></div>
-        ${gF === 'dups' ? '<div class="note warn" style="margin-bottom:10px">' + R.icon('users') + '<div>These profiles share a name or a mobile number. Open one and merge the others into it so the stay history is in one place.</div></div>' : ''}
-        <div class="tbl"><table><thead><tr><th>Guest</th><th>From</th><th>Notes</th><th class="right">Stays</th><th class="right">Spend</th><th>Now</th></tr></thead><tbody>
-        ${L.slice(0, 150).map(g => `<tr class="click" data-act="openGuest" data-id="${g.id}"><td><div class="row"><span class="avatar sm">${R.initials(g.name)}</span><div><b>${esc(g.name)}</b>${dupSet.has(g.id) ? ' <span class="chip amber">Duplicate?</span>' : ''}<div class="small muted">${esc(g.phone)}</div></div></div></td>
-          <td class="small">${esc(g.town) || '—'}</td><td>${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}${g.prefs ? `<div class="small muted ellip">${esc(g.prefs)}</div>` : ''}</td>
-          <td class="right">${pastStays(g) > 1 ? `<span class="chip green">${pastStays(g)}</span>` : pastStays(g)}</td><td class="right num">${R.money(spendOf(g))}</td><td>${nowChip(g)}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">No guests match</td></tr>'}
-        </tbody></table></div></div>`;
+      const words = fold(gQ).split(/\s+/).filter(Boolean), why = new Map();
+      const match = g => { if (!words.length) return true; const f = searchGuest(g, words); if (f) why.set(g.id, f); return !!f; };
+      const TESTS = { all: () => true, inhouse: g => staysOf(g).some(r => r.status === 'inhouse'), soon: g => staysOf(g).some(r => r.status === 'booked' && r.arrive <= addDays(bd(), 7)),
+        repeat: g => pastStays(g) >= 2 || g.tag === 'Repeat guest', vip: g => g.tag === 'VIP', dups: g => dupSet.has(g.id) };
+      const found = R.S.guests.filter(match);
+      let L = found.filter(TESTS[gF]);
+      const by = { recent: (a, b) => lastArrive(b).localeCompare(lastArrive(a)) || a.name.localeCompare(b.name), name: (a, b) => a.name.localeCompare(b.name), stays: (a, b) => pastStays(b) - pastStays(a) || a.name.localeCompare(b.name), spend: (a, b) => spendOf(b) - spendOf(a) };
+      L = L.sort(gF === 'dups' ? by.name : by[gSort]);
+      const F = [['all', 'All'], ['inhouse', 'In house'], ['soon', 'Arriving in 7 days'], ['repeat', 'Repeat'], ['vip', 'VIP'], ['dups', 'Possible duplicates']];
+      const can = R.can('book'), shown = L.slice(0, 150);
+      return `<div class="panel"><div class="g-tools">
+          <div class="g-search">${R.icon('search')}<input type="search" id="gSearch" placeholder="Search name, mobile, email, address, notes, ID or booking no." value="${esc(gQ)}" aria-label="Search guests" autocomplete="off" spellcheck="false">${gQ ? '<button type="button" class="g-clear" data-act="gClear" aria-label="Clear the search">×</button>' : ''}</div>
+          <label class="g-sort">Sort<select data-change="gSort" aria-label="Sort guests" ${gF === 'dups' ? 'disabled' : ''}>${SORTS.map(([k, l]) => `<option value="${k}" ${gSort === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          ${can ? `<button class="btn" data-act="newGuest">${R.icon('plus')}New guest</button>` : ''}</div>
+        <div class="seg g-filters" role="group" aria-label="Show">${F.map(([f, l]) => { const n = found.filter(TESTS[f]).length; return `<button class="${gF === f ? 'on' : ''}" aria-pressed="${gF === f}" data-act="gFilter" data-f="${f}"><b>${l}</b> <span class="g-n">${n}</span></button>`; }).join('')}</div>
+        ${gF === 'dups' && L.length ? `<div class="note warn" style="margin:10px 0">${R.icon('users')}<div>These profiles share a name or a mobile number. Open one and merge the others into it, so the stay history is in one place.</div></div>` : ''}
+        ${L.length ? `<div class="tbl"><table class="g-tbl"><thead><tr><th>Guest</th><th>From</th><th>Stay</th><th>Notes</th><th class="right">Stays</th><th class="right">Spend</th></tr></thead><tbody>
+        ${shown.map(g => `<tr class="click" data-act="openGuest" data-id="${g.id}"><td class="g-who"><span class="avatar sm ${g.tag === 'VIP' ? 'vip' : ''}" aria-hidden="true">${esc(R.initials(g.name))}</span><div><a href="#guest/${g.id}" class="g-name">${mark(g.name, words)}</a>${dupSet.has(g.id) ? ' <span class="chip amber">Duplicate?</span>' : ''}<div class="small muted">${g.phone ? mark(g.phone, words) : 'No mobile'}${g.email ? ` · ${mark(g.email, words)}` : ''}</div>${foundLine(g, why.get(g.id), words)}</div></td>
+          <td class="small">${g.town ? mark(g.town, words) : '<span class="muted">—</span>'}</td><td>${whenChip(g)}</td>
+          <td>${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}${g.prefs ? `<div class="small muted ellip">${esc(g.prefs)}</div>` : ''}</td>
+          <td class="right num">${pastStays(g) > 1 ? `<span class="chip green">${pastStays(g)}</span>` : pastStays(g)}</td><td class="right num">${R.money(spendOf(g))}</td></tr>`).join('')}
+        </tbody></table></div>${L.length > shown.length ? `<p class="small muted g-more">Showing ${shown.length} of ${L.length} guests. Search to find the others.</p>` : ''}`
+        : `<div class="g-empty"><b>${q ? `No guests match “${esc(gQ.trim())}”` : 'No guests here yet'}</b><p class="muted">${q ? 'Try fewer words, or part of a name, mobile, address, note or ID number.' : 'Guests appear here once they book.'}</p>
+            <div class="row">${q ? '<button class="btn ghost" data-act="gClear">Clear the search</button>' : ''}${gF !== 'all' ? '<button class="btn ghost" data-act="gFilter" data-f="all">Show all guests</button>' : ''}${can && q && !/^\d+$/.test(q) ? `<button class="btn" data-act="newGuest" data-name="${esc(gQ.trim())}">${R.icon('plus')}Add “${esc(gQ.trim())}”</button>` : ''}</div></div>`}</div>`;
     },
     mount(el) { const s = el.querySelector('#gSearch'); s.addEventListener('input', () => { gQ = s.value; const p = s.selectionStart; R.render(); const n = document.getElementById('gSearch'); n.focus(); n.setSelectionRange(p, p); }); }
   };
@@ -54,22 +102,93 @@
     const g = R.findGuest(d.id); g.prefs = el.value.trim();
     R.log('Guest notes', `${g.name}: ${g.prefs || '(cleared)'}`); R.rerender(); R.toast('Guest notes saved');
   };
-  R.act.editGuest = d => {
-    if (!R.need('book')) return;
-    const g = R.findGuest(d.id);
-    R.modal('Edit guest', `<div class="form">
-      <label class="field full">Full name<input id="egN" value="${esc(g.name)}"></label>
-      <label class="field">Mobile<input id="egP" value="${esc(g.phone)}"></label><label class="field">Email<input id="egE" type="email" value="${esc(g.email)}"></label>
-      <label class="field">Town / city<input id="egT" value="${esc(g.town)}"></label><label class="field">Nationality<input id="egNa" value="${esc(g.nationality || '')}"></label>
-      <label class="field">Tag<select id="egTag"><option value="">None</option>${TAGS.concat(g.tag && !TAGS.includes(g.tag) ? [g.tag] : []).map(t => `<option ${t === g.tag ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></label></div>
-      <div class="foot"><button class="btn ghost" data-act="closeModal">Cancel</button><button class="btn" id="egGo">Save</button></div>`, b => {
-      b.querySelector('#egGo').onclick = () => {
-        const v = s => b.querySelector(s).value.trim();
-        if (v('#egN').length < 3) return R.toast('Enter the name', 'warn');
-        Object.assign(g, { name: v('#egN'), phone: v('#egP'), email: v('#egE'), town: v('#egT'), nationality: v('#egNa'), tag: b.querySelector('#egTag').value });
-        R.log('Guest edited', g.name); R.closeModal(); R.rerender(); R.toast('Saved');
+  R.act.gCopy = d => { const ok = () => R.toast(`${d.v} copied`); if (navigator.clipboard) navigator.clipboard.writeText(d.v).then(ok, () => R.toast('Copy failed')); };
+  const NATIONS = ['Filipino', 'American', 'Australian', 'British', 'Canadian', 'Chinese', 'Dutch', 'French', 'German', 'Indian', 'Indonesian', 'Italian', 'Japanese', 'Korean', 'Malaysian', 'New Zealander', 'Singaporean', 'Spanish', 'Swiss', 'Taiwanese', 'Thai', 'Vietnamese', 'Other'];
+  const phoneOk = p => p.replace(/\D/g, '').length >= 7;
+  // one dialog for editing and for adding a guest by hand
+  const guestDialog = (g, isNew) => {
+    const nat = g.nationality || 'Filipino', nations = NATIONS.includes(nat) ? NATIONS : [nat, ...NATIONS];
+    R.modal(isNew ? 'New guest' : 'Edit guest', `<form class="nb eg" id="egForm" novalidate><div class="nb-main">
+      <section class="nb-sec" aria-labelledby="egH1"><h3 id="egH1">Name</h3>
+        <label class="field">Full name<input id="egN" value="${esc(g.name)}" autocomplete="off" autocapitalize="words" placeholder="As on their ID, e.g. Maria Santos"></label>
+        ${R.fx.chips('egTag', [['', 'No tag'], ...TAGS.concat(g.tag && !TAGS.includes(g.tag) ? [g.tag] : []).map(t => [t, esc(t)])], g.tag || '', 'Tag')}</section>
+      <section class="nb-sec" aria-labelledby="egH2"><h3 id="egH2">Contact</h3>
+        <div class="form"><label class="field">Mobile number<input id="egP" type="tel" inputmode="tel" value="${esc(g.phone)}" placeholder="0917 123 4567" autocomplete="off"></label>
+          <label class="field"><span>Email <span class="muted">(optional)</span></span><input id="egE" type="email" value="${esc(g.email)}" placeholder="name@gmail.com" spellcheck="false" autocomplete="off"></label></div>
+        <div id="egDup"></div>
+        <div class="form"><label class="field"><span>Town or city <span class="muted">(optional)</span></span><input id="egT" value="${esc(g.town)}" placeholder="e.g. Cagayan de Oro"></label>
+          <label class="field">Nationality<select id="egNa">${nations.map(n => `<option ${n === nat ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label></div></section>
+      <section class="nb-sec" aria-labelledby="egH3"><h3 id="egH3">ID on file <span class="muted eg-sub">usually taken at check-in</span></h3>
+        <div class="form"><label class="field">ID type<select id="egIdT"><option value="">Not taken yet</option>${R.ID_TYPES.map(x => `<option ${x === g.idType ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>
+          <label class="field">ID number<input id="egIdN" value="${esc(g.idNo || '')}" placeholder="As printed on the ID" autocomplete="off" spellcheck="false"></label></div>
+      </section>
+      <section class="nb-sec" aria-labelledby="egH4"><h3 id="egH4">Preferences and notes</h3>
+        <label class="field"><span>Notes <span class="muted">(shown at check-in and on the arrivals list)</span></span><textarea id="egPr" rows="3" placeholder="e.g. likes a ground floor room, allergic to shrimp, birthday on 12 March">${esc(g.prefs || '')}</textarea></label></section>
+      </div></form>
+      <div class="foot nb-foot"><p id="egErr" class="fx-err" role="alert"></p><button type="button" class="btn ghost" data-act="closeModal">Cancel</button><button type="submit" form="egForm" class="btn" id="egGo">${isNew ? 'Add guest' : 'Save changes'}</button></div>`, b => {
+      const $ = s => b.querySelector(s), form = $('#egForm');
+      // someone else with this mobile number or name? say so before a second profile is made
+      const dupHint = () => {
+        const p = $('#egP').value.replace(/\D/g, '').slice(-10), n = $('#egN').value.trim().toLowerCase();
+        const others = R.S.guests.filter(x => x.id !== g.id && ((p.length >= 7 && x.phone.replace(/\D/g, '').slice(-10) === p) || (n.length >= 3 && x.name.trim().toLowerCase() === n))).slice(0, 3);
+        $('#egDup').innerHTML = others.length ? `<div class="note warn eg-dup">${R.icon('users')}<div><b>${others.length === 1 ? 'Another guest has' : 'Other guests have'} this ${others.some(x => p.length >= 7 && x.phone.replace(/\D/g, '').slice(-10) === p) ? 'mobile number' : 'name'}.</b> ${isNew ? 'Open their profile instead, so the history stays in one place.' : 'If it is the same person, merge the profiles from the guest page.'}
+          <div class="row" style="margin-top:6px">${others.map(x => `<button type="button" class="btn ghost sm" data-act="openGuest" data-id="${x.id}">${esc(x.name)}, ${esc(x.phone)}</button>`).join('')}</div></div></div>` : '';
       };
-    });
+      form.addEventListener('input', e => { if (e.target.id) R.fx.clearErr(b, e.target.id); if (['egP', 'egN'].includes(e.target.id)) dupHint(); });
+      form.addEventListener('focusout', e => { if (e.target.id === 'egP' && /^(\+?63|0)9\d{9}$/.test(e.target.value.replace(/[\s-]/g, ''))) { const d = e.target.value.replace(/\D/g, '').replace(/^63/, '0'); e.target.value = `${d.slice(0, 4)} ${d.slice(4, 7)} ${d.slice(7)}`; } });
+      form.addEventListener('submit', e => {
+        e.preventDefault();
+        const v = s => $(s).value.trim(), errs = [], add = (id, m) => errs.push([id, m]);
+        if (v('#egN').length < 3) add('egN', 'Enter the full name.');
+        if (!phoneOk(v('#egP'))) add('egP', 'Enter a mobile number, like 0917 123 4567.');
+        if (v('#egE') && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v('#egE'))) add('egE', 'Check the email address, or leave it empty.');
+        if (v('#egIdN') && !$('#egIdT').value) add('egIdT', 'Pick the ID type for this number.');
+        if (!R.fx.report(b, errs, $('#egErr'))) return;
+        const vals = { name: v('#egN'), phone: v('#egP'), email: v('#egE'), town: v('#egT'), nationality: $('#egNa').value, tag: R.fx.radio(b, 'egTag'), idType: $('#egIdT').value, idNo: $('#egIdT').value ? v('#egIdN') : '', prefs: v('#egPr') };
+        if (isNew) { const ng = { id: R.nextId('G'), stays: 0, ...vals }; R.S.guests.unshift(ng); R.log('Guest added', ng.name); R.closeModal(); R.save(); R.go('guest', ng.id); R.toast(`${ng.name} added`); return; }
+        const changed = Object.keys(vals).filter(k => (g[k] || '') !== vals[k]);
+        if (!changed.length) { R.closeModal(); return R.toast('No changes to save'); }
+        Object.assign(g, vals);
+        R.log('Guest edited', `${g.name}: ${changed.join(', ')}`); R.closeModal(); R.rerender(); R.toast('Changes saved');
+      });
+      dupHint();
+    }, { tall: true });
+  };
+  R.act.editGuest = d => { if (!R.need('book')) return; guestDialog(R.findGuest(d.id), false); };
+  R.act.newGuest = d => { if (!R.need('book')) return; guestDialog({ name: d && d.name || '', phone: '', email: '', town: '', nationality: 'Filipino', tag: '', idType: '', idNo: '', prefs: '' }, true); };
+  R.views.guest = {
+    title: () => R.findGuest(R.param).name,
+    hint: '',
+    render() {
+      const g = R.findGuest(R.param), rs = staysOf(g).sort((a, b) => b.arrive.localeCompare(a.arrive));
+      const done = rs.filter(r => r.status === 'checkedout'), nights = done.reduce((s, r) => s + r.nights, 0);
+      const roomRev = done.reduce((s, r) => s + R.stayValue(r), 0);
+      const src = {}; rs.forEach(r => { src[r.channel] = (src[r.channel] || 0) + 1; });
+      const fav = Object.entries(src).sort((a, b) => b[1] - a[1])[0];
+      const dups = R.dupsOf(g), can = R.can('book');
+      const ahead = rs.filter(r => r.status === 'booked' || r.status === 'inhouse').sort((a, b) => a.arrive.localeCompare(b.arrive)), past = rs.filter(r => !ahead.includes(r));
+      const next = ahead[0];
+      const ids = new Set(rs.map(r => r.id)), cots = R.S.venueBookings.filter(v => (v.guestId === g.id || ids.has(v.resId)) && v.status !== 'cancelled').sort((a, b) => b.date.localeCompare(a.date));
+      const first = rs.map(r => r.arrive).sort()[0], tel = (g.phone || '').replace(/[^\d+]/g, '');
+      const resTable = L => `<div class="tbl"><table><tbody>${L.map(r => R.resRow(r, `<span class="num small">${R.money(R.total(r) || R.stayValue(r))}</span>`)).join('')}</tbody></table></div>`;
+      const staysNow = pastStays(g) + (rs.some(r => r.status === 'inhouse') ? 1 : 0);
+      return `<div class="bk-head"><a class="btn ghost sm" href="#guests">${R.icon('back')}Guests</a><span class="row g-chips">${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}${nowChip(g)}${staysNow >= 2 ? '<span class="chip green">Repeat guest</span>' : ''}</span>
+          <div class="sp row">${can ? `${next ? `<button class="btn ghost sm" data-act="msgGuest" data-id="${next.id}">Message guest</button>` : ''}<button class="btn ghost sm" data-act="editGuest" data-id="${g.id}">Edit guest</button><button class="btn sm" data-act="newBooking" data-guest="${g.id}">${R.icon('plus')}New booking</button>` : ''}</div></div>
+        <div class="pulse pulse5"><div><b>${staysNow}</b><span>${rs.some(r => r.status === 'inhouse') ? 'Stays, this one included' : 'Stays'}</span></div><div><b>${nights}</b><span>Nights stayed</span></div><div><b>${R.money(spendOf(g))}</b><span>Total spend</span></div>
+          <div><b>${nights ? R.money(roomRev / nights) : '—'}</b><span>Average room rate</span></div><div><b>${next ? R.fmtShort(next.status === 'inhouse' ? R.dep(next) : next.arrive) : '—'}</b><span>${next && next.status === 'inhouse' ? 'Checks out' : 'Next arrival'}</span></div></div>
+        <div class="grid g-side"><div class="stack">
+          <div class="panel"><h2>Stays</h2>${rs.length ? `${ahead.length ? `<p class="g-sub">Coming up</p>${resTable(ahead)}` : ''}${past.length ? `<p class="g-sub">Past</p>${resTable(past)}` : ''}`
+            : `<p class="empty">No stays yet.${can ? ` <button class="btn ghost sm" data-act="newBooking" data-guest="${g.id}">Make a booking</button>` : ''}</p>`}</div>
+          ${cots.length ? `<div class="panel"><h2>Cottage reservations <span class="g-n">${cots.length}</span></h2>${cots.map(v => `<button class="list-item g-cot" data-act="openEvent" data-id="${v.id}"><span class="grow"><b>${esc(R.venue(v.venue).name)}</b><span class="small muted">${R.fmt(v.date)}, ${v.session === 'day' ? 'day tour' : 'night swim'}, ${v.pax} guests</span></span>${R.chip(v.status === 'arrived' ? 'done' : v.status === 'booked' ? 'booked' : v.status)}</button>`).join('')}</div>` : ''}
+          ${dups.length ? `<div class="panel"><h2>Possible duplicates</h2><p class="small muted" style="margin-bottom:6px">Same name or the same mobile number. Merge them so the history is in one place.</p>${dups.map(x => `<div class="list-item"><span class="avatar sm">${R.initials(x.name)}</span><div class="grow small"><b>${esc(x.name)}</b> · ${esc(x.phone)}<div class="muted">${staysOf(x).length} booking(s)</div></div>${can ? `<button class="btn ghost sm" data-act="mergeGuest" data-keep="${g.id}" data-drop="${x.id}">Merge into this profile</button>` : ''}</div>`).join('')}</div>` : ''}
+        </div><div class="stack">
+          <div class="panel"><h2>Details</h2>
+            <dl class="kv kv-side"><dt>Mobile</dt><dd>${g.phone ? `<a href="tel:${esc(tel)}">${esc(g.phone)}</a> <button class="g-copy" data-act="gCopy" data-v="${esc(g.phone)}" aria-label="Copy mobile number">Copy</button>` : '—'}</dd><dt>Email</dt><dd>${g.email ? `<a href="mailto:${esc(g.email)}">${esc(g.email)}</a>` : '—'}</dd><dt>From</dt><dd>${esc(g.town) || '—'}</dd><dt>Nationality</dt><dd>${esc(g.nationality) || '—'}</dd>${first ? `<dt>Guest since</dt><dd>${new Date(first + 'T12:00').toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })}</dd>` : ''}${fav ? `<dt>Books through</dt><dd>${esc(fav[0])}</dd>` : ''}
+            <dt>ID on file</dt><dd>${g.idNo ? `${esc(g.idType)} · ${esc(g.idNo.replace(/.(?=.{3})/g, '•'))}` : '<span class="muted">Taken at check-in</span>'}</dd></dl></div>
+          <div class="panel"><h2>Preferences and notes</h2><p class="small muted" style="margin-bottom:6px">Shown at check-in, on the booking and on the arrivals list. Saved when you click away.</p>
+            <textarea class="search" style="width:100%" rows="4" data-change="guestNotes" data-id="${g.id}" ${can ? '' : 'disabled'} placeholder="e.g. likes a ground floor room, allergic to shrimp, birthday on 12 March" aria-label="Guest notes">${esc(g.prefs)}</textarea></div>
+        </div></div>`;
+    }
   };
   R.act.mergeGuest = d => {
     if (!R.need('book')) return;
@@ -84,32 +203,6 @@
       R.log('Guests merged', `${drop.name} (${drop.id}) → ${keep.name} (${keep.id})`);
       R.rerender(); R.toast('Profiles merged');
     });
-  };
-  R.views.guest = {
-    title: () => R.findGuest(R.param).name,
-    hint: '',
-    render() {
-      const g = R.findGuest(R.param), rs = staysOf(g).sort((a, b) => b.arrive.localeCompare(a.arrive));
-      const done = rs.filter(r => r.status === 'checkedout'), nights = done.reduce((s, r) => s + r.nights, 0);
-      const roomRev = done.reduce((s, r) => s + R.stayValue(r), 0);
-      const src = {}; rs.forEach(r => { src[r.channel] = (src[r.channel] || 0) + 1; });
-      const fav = Object.entries(src).sort((a, b) => b[1] - a[1])[0];
-      const dups = R.dupsOf(g), can = R.can('book');
-      const next = rs.find(r => r.status === 'booked' || r.status === 'inhouse');
-      return `<div class="bk-head"><a class="btn ghost sm" href="#guests">${R.icon('back')}Guests</a><span class="row">${g.tag ? `<span class="chip amber">${esc(g.tag)}</span>` : ''}${nowChip(g)}</span>
-          <div class="sp row">${can ? `<button class="btn ghost sm" data-act="editGuest" data-id="${g.id}">Edit</button>${next ? `<button class="btn ghost sm" data-act="msgGuest" data-id="${next.id}">Message guest</button>` : ''}<button class="btn sm" data-act="newBooking" data-guest="${g.id}">${R.icon('plus')}New booking</button>` : ''}</div></div>
-        <div class="pulse pulse5"><div><b>${pastStays(g)}</b><span>Stays</span></div><div><b>${nights}</b><span>Nights stayed</span></div><div><b>${R.money(spendOf(g))}</b><span>Total spend</span></div>
-          <div><b>${R.money(nights ? roomRev / nights : 0)}</b><span>Average room rate</span></div><div><b class="b-text">${fav ? esc(fav[0]) : '—'}</b><span>Usually books through</span></div></div>
-        <div class="grid g-side"><div class="stack">
-          <div class="panel"><h2>Stays</h2><div class="tbl"><table><tbody>${rs.map(r => R.resRow(r, `<span class="num small">${R.money(R.total(r) || R.stayValue(r))}</span>`)).join('') || '<tr><td class="empty">No bookings yet</td></tr>'}</tbody></table></div></div>
-          ${dups.length ? `<div class="panel"><h2>Possible duplicates</h2><p class="small muted" style="margin-bottom:6px">Same name or the same mobile number.</p>${dups.map(x => `<div class="list-item"><span class="avatar sm">${R.initials(x.name)}</span><div class="grow small"><b>${esc(x.name)}</b> · ${esc(x.phone)}<div class="muted">${staysOf(x).length} booking(s) · ${esc(x.town) || '—'}</div></div><a class="btn sm ghost" href="#guest/${x.id}">Open</a>${can ? `<button class="btn sm" data-act="mergeGuest" data-keep="${g.id}" data-drop="${x.id}">Merge into this profile</button>` : ''}</div>`).join('')}</div>` : ''}
-        </div><div class="stack">
-          <div class="panel"><h2>Contact</h2><dl class="kv"><dt>Mobile</dt><dd>${esc(g.phone)}</dd><dt>Email</dt><dd>${esc(g.email) || '—'}</dd><dt>From</dt><dd>${esc(g.town) || '—'}</dd><dt>Nationality</dt><dd>${esc(g.nationality) || '—'}</dd>
-            <dt>ID on file</dt><dd>${g.idNo ? `${esc(g.idType)} · ${esc(g.idNo.replace(/.(?=.{3})/g, '•'))}` : '<span class="muted">Taken at check-in</span>'}</dd></dl></div>
-          <div class="panel"><h2>Preferences & notes</h2><p class="small muted" style="margin-bottom:6px">Shown at check-in, on the booking and on the arrivals list.</p>
-            <textarea class="search" style="width:100%" rows="4" data-change="guestNotes" data-id="${g.id}" ${can ? '' : 'disabled'} placeholder="e.g. likes a ground floor room, allergic to shrimp, birthday on 12 March" aria-label="Guest notes">${esc(g.prefs)}</textarea></div>
-        </div></div>`;
-    }
   };
   // ---------- Message guest (templates; the real system sends them) ----------
   R.act.msgGuest = d => {
