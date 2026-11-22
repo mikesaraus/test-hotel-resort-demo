@@ -19,6 +19,8 @@
       S.zones.splice(S.zones.findIndex(z => z.id === 'family') + 1, 0, { id: 'Z-pool', name: 'Swimming pool', kind: 'feature', style: 'pool', span: 6 });
     }
     if (S.modules.roster === undefined) S.modules.roster = false;
+    if (!S.inventory) S.inventory = R.seedInventory(S);
+    if (S.modules.inventory === undefined) S.modules.inventory = true;
     if (S.rules.guestEntranceFree === undefined) S.rules.guestEntranceFree = true;
     if (S.sources && !S.sources.some(x => x.name === 'Website')) S.sources.splice(0, 0, { name: 'Website', commission: 0 });
     // older seasons: "MM-DD to MM-DD, weeknights" → the new format (Holy Week now follows Easter)
@@ -138,26 +140,27 @@
   };
 
   // ---------- roles & permissions ----------
-  const ALL = ['desk', 'reservations', 'guests', 'calendar', 'events', 'till', 'cashier', 'rooms', 'tasks', 'fnb', 'activities', 'guestapp', 'audit', 'reports', 'roster', 'settings'];
+  const ALL = ['desk', 'reservations', 'guests', 'calendar', 'events', 'till', 'cashier', 'rooms', 'tasks', 'inventory', 'fnb', 'activities', 'guestapp', 'audit', 'reports', 'roster', 'settings'];
   const FO = ['book', 'checkin', 'pay', 'move', 'cancel', 'till', 'task', 'shift', 'activity'];
   R.ROLES = {
     owner: { name: 'Owner', screens: ALL, perms: '*', does: 'Everything, including users, modules and the audit log' },
-    manager: { name: 'General manager', screens: ALL, perms: [...FO, 'void', 'refund', 'rate', 'fnb', 'hk', 'inspect', 'ooo', 'audit', 'settings', 'reports', 'roster'], does: 'All operations, rates and seasons, approves voids, refunds and rate changes' },
-    supervisor: { name: 'Front office supervisor', screens: ALL.filter(x => x !== 'settings'), perms: [...FO, 'void', 'refund', 'rate', 'fnb', 'hk', 'inspect', 'ooo', 'audit', 'reports', 'roster'], does: 'Front desk, plus the front office roster, approving voids, refunds, rate changes and the night audit' },
+    manager: { name: 'General manager', screens: ALL, perms: [...FO, 'void', 'refund', 'rate', 'fnb', 'hk', 'inspect', 'ooo', 'audit', 'settings', 'reports', 'roster', 'stock', 'stockok'], does: 'All operations, rates and seasons, approves voids, refunds, rate changes and stock count differences' },
+    supervisor: { name: 'Front office supervisor', screens: ALL.filter(x => x !== 'settings'), perms: [...FO, 'void', 'refund', 'rate', 'fnb', 'hk', 'inspect', 'ooo', 'audit', 'reports', 'roster', 'stock', 'stockok'], does: 'Front desk, plus the front office roster, approving voids, refunds, rate changes, stock count differences and the night audit' },
     frontdesk: { name: 'Front desk cashier', screens: ['desk', 'reservations', 'guests', 'calendar', 'events', 'till', 'cashier', 'rooms', 'tasks', 'activities', 'guestapp'], perms: FO, does: 'Bookings, check-in and check-out, payments, day tour till, own shift' },
     nightaudit: { name: 'Night auditor', screens: ['audit', 'desk', 'reservations', 'guests', 'calendar', 'cashier', 'rooms', 'tasks', 'reports'], perms: ['book', 'checkin', 'pay', 'shift', 'task', 'audit', 'reports'], does: 'Closes the business day, no-shows, end-of-day reports' },
-    hkhead: { name: 'Head housekeeper', screens: ['rooms', 'tasks', 'roster'], perms: ['hk', 'inspect', 'ooo', 'task', 'roster'], does: 'Room status, assigns attendants, inspects rooms, housekeeping roster' },
+    hkhead: { name: 'Head housekeeper', screens: ['rooms', 'tasks', 'inventory', 'roster'], perms: ['hk', 'inspect', 'ooo', 'task', 'roster', 'stock'], does: 'Room status, assigns attendants, inspects rooms, amenity and linen stock, housekeeping roster' },
     housekeeping: { name: 'Room attendant', screens: ['rooms', 'tasks'], perms: ['hk', 'task'], does: 'Own room list, marks rooms cleaned' },
     maintenance: { name: 'Maintenance', screens: ['tasks', 'rooms'], perms: ['task', 'ooo'], does: 'Repairs, takes rooms out of order and back' },
-    fnb: { name: 'Restaurant & bar', screens: ['fnb', 'tasks'], perms: ['fnb', 'task'], does: 'Restaurant and bar sales, charges to in-house rooms' },
+    fnb: { name: 'Restaurant & bar', screens: ['fnb', 'tasks', 'inventory'], perms: ['fnb', 'task', 'stock'], does: 'Restaurant and bar sales, charges to in-house rooms, bar stock' },
     activities: { name: 'Pool & activities', screens: ['activities', 'tasks'], perms: ['activity', 'task'], does: 'Activity and spa bookings' },
-    accountant: { name: 'Accountant (view only)', screens: ['reports', 'cashier', 'reservations', 'guests', 'events'], perms: ['reports'], does: 'Reports, receipts, VAT and unpaid balances. Cannot change anything' }
+    accountant: { name: 'Accountant (view only)', screens: ['reports', 'cashier', 'reservations', 'guests', 'events', 'inventory'], perms: ['reports'], does: 'Reports, receipts, VAT, unpaid balances and stock value. Cannot change anything' }
   };
   R.PERMS = {
     book: 'Make and change bookings', checkin: 'Check in and out', pay: 'Take payments and post charges', move: 'Move rooms', cancel: 'Cancel bookings',
     void: 'Void a charge', refund: 'Give a refund', rate: 'Change a room rate', till: 'Sell entrance, cottages and rentals', fnb: 'Ring up restaurant and bar sales',
     hk: 'Mark rooms cleaned', inspect: 'Inspect rooms', ooo: 'Take rooms out of order', task: 'Handle tasks', shift: 'Open and close cashier shifts',
-    activity: 'Book activities', audit: 'Run the night audit', reports: 'See reports', settings: 'Change rates, seasons and house rules', roster: 'Change the staff roster', admin: 'Manage users and modules'
+    activity: 'Book activities', audit: 'Run the night audit', reports: 'See reports', settings: 'Change rates, seasons and house rules', roster: 'Change the staff roster',
+    stock: 'Receive, issue and count stock', stockok: 'Approve stock count differences and edit stock items', admin: 'Manage users and modules'
   };
   R.user = () => R.staff(R.S.user);
   R.roleKey = () => R.user().roleKey;
@@ -199,7 +202,7 @@
     { grp: 'Rooms', items: [['desk', 'desk', 'Front desk'], ['reservations', 'book', 'Reservations'], ['calendar', 'calendar', 'Room calendar'], ['guests', 'users', 'Guests']] },
     { grp: 'Day tour', items: [['till', 'ticket', 'Day pass'], ['events', 'flag', 'Cottage reservations']] },
     { grp: 'Cash & closing', items: [['cashier', 'cash', 'Cashier'], ['audit', 'moon', 'Night audit']] },
-    { grp: 'Housekeeping', items: [['rooms', 'bed', 'Room status'], ['tasks', 'check', 'Tasks']] },
+    { grp: 'Housekeeping', items: [['rooms', 'bed', 'Room status'], ['tasks', 'check', 'Tasks'], ['inventory', 'box', 'Inventory']] },
     { grp: 'Outlets', items: [['fnb', 'cup', 'Restaurant & bar'], ['activities', 'sun', 'Activities & spa'], ['guestapp', 'phone', 'Guest app']] },
     { grp: 'Management', items: [['reports', 'chart', 'Reports'], ['roster', 'clock', 'Staff roster'], ['settings', 'gear', 'Settings']] }
   ];
@@ -210,6 +213,7 @@
     if (id === 'desk') return R.S.reservations.filter(r => r.status === 'booked' && r.arrive <= bd).length;
     if (id === 'audit') return bd < realToday() ? '!' : 0;
     if (id === 'events') return R.S.venueBookings.filter(v => v.date === bd && v.status === 'booked').length;
+    if (id === 'inventory') return R.stockLow();
     return 0;
   }
   function renderNav(cur) {

@@ -459,7 +459,8 @@
   }
   function modules() {
     const can = R.can('admin');
-    const M = [['fnb', 'Restaurant & bar', 'Point of sale for the restaurant, poolside bar and room service. Charges go to the room bill or get a receipt.'],
+    const M = [['inventory', 'Inventory', 'Room amenities, linen, bar stock and supplies: on hand, reorder levels, cost and every movement. Cleaning a room and bar sales take stock out by themselves.'],
+      ['fnb', 'Restaurant & bar', 'Point of sale for the restaurant, poolside bar and room service. Charges go to the room bill or get a receipt.'],
       ['activities', 'Activities & spa', 'Session times and places left for massage, videoke, lessons and events. Most resorts can use "Add charge" instead.'],
       ['guestapp', 'Guest app', 'QR code in each room: requests, room service, activities and express check-out with GCash or card.'],
       ['roster', 'Staff roster', 'Weekly shifts per person, who is on duty today, and warnings when a team has nobody on. Off until Camsair is ready to plan shifts here.']];
